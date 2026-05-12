@@ -14,6 +14,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/health', require('./routes/health'));
+app.use('/api/status', require('./routes/status'));
 // app.use('/api/animals', require('./routes/animals'));
 // app.use('/api/clients', require('./routes/clients'));
 // app.use('/api/appointments', require('./routes/appointments'));
