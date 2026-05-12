@@ -19,9 +19,10 @@ router.get('/', async (req, res) => {
     ? { ok: true, message: process.env.SUPABASE_URL.replace(/^(https:\/\/[^.]{4})[^.]+/, '$1***') }
     : { ok: false, message: 'SUPABASE_URL not set' };
 
-  checks.supabase_key = process.env.SUPABASE_SERVICE_KEY
+  const hasKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+  checks.supabase_key = hasKey
     ? { ok: true, message: 'present' }
-    : { ok: false, message: 'SUPABASE_SERVICE_KEY not set' };
+    : { ok: false, message: 'SUPABASE_SERVICE_ROLE_KEY not set' };
 
   // Live Supabase ping
   try {
