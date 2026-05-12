@@ -1,12 +1,36 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import StatusCheck from './pages/StatusCheck';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import PetOwnerDashboard from './pages/PetOwnerDashboard';
+import VetPortal from './pages/VetPortal';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/status" element={<StatusCheck />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute requiredRole="pet_owner">
+            <PetOwnerDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vet"
+        element={
+          <ProtectedRoute requiredRole="veterinarian">
+            <VetPortal />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

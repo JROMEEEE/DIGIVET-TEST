@@ -86,7 +86,7 @@ export default function Landing() {
               borderRadius: '8px', textDecoration: 'none', fontWeight: 600, fontSize: '0.92rem',
               background: 'transparent',
             }}>
-              Register as a vet
+              Create account
             </Link>
           </div>
 
