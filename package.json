@@ -1,0 +1,17 @@
+{
+  "name": "digivetonline",
+  "version": "1.0.0",
+  "description": "DIGIVET Online - PERN Stack (Supabase + Render)",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
