@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const supabase = require('../supabase');
+const getSupabase = require('../supabase');
 
 router.get('/', async (req, res) => {
   const checks = {
@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
   // Live Supabase ping
   try {
     const start = Date.now();
-    const { error } = await supabase.from('_test_ping').select('*').limit(1);
+    const { error } = await getSupabase().from('_test_ping').select('*').limit(1);
     const ms = Date.now() - start;
     // PGRST116 = table not found, but connection itself succeeded
     if (!error || error.code === 'PGRST116' || error.code === '42P01') {

@@ -1,9 +1,9 @@
 const router = require('express').Router();
-const supabase = require('../supabase');
+const getSupabase = require('../supabase');
 
 router.get('/', async (req, res) => {
   try {
-    const { error } = await supabase.from('_health').select('*').limit(1);
+    const { error } = await getSupabase().from('_health').select('*').limit(1);
     res.json({
       status: 'ok',
       server: 'DIGIVET Online API',

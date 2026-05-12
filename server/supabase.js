@@ -1,8 +1,17 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+let _client = null;
 
-module.exports = supabase;
+function getSupabase() {
+  if (!_client) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_KEY;
+    if (!url || !key) {
+      throw new Error(`Missing Supabase env vars: ${!url ? 'SUPABASE_URL ' : ''}${!key ? 'SUPABASE_SERVICE_KEY' : ''}`);
+    }
+    _client = createClient(url, key);
+  }
+  return _client;
+}
+
+module.exports = getSupabase;
