@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api';
 
 function Home() {
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
-    fetch('/api/health')
+    apiFetch('/api/health')
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => setStatus({ status: 'error' }));

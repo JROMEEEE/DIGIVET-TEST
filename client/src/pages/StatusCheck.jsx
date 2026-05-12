@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api';
 
 const CHECK_LABELS = {
   server: 'Express Server',
@@ -32,7 +33,7 @@ export default function StatusCheck() {
   const run = () => {
     setLoading(true);
     setError(null);
-    fetch('/api/status')
+    apiFetch('/api/status')
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });
