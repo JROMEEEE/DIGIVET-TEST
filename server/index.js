@@ -12,6 +12,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Root
+app.get('/', (req, res) => {
+  res.json({ name: 'DIGIVET Online API', status: 'running', version: '1.0.0' });
+});
+
 // Routes
 app.use('/api/health', require('./routes/health'));
 app.use('/api/status', require('./routes/status'));
