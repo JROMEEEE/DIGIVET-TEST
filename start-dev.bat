@@ -33,11 +33,8 @@ if not exist "server\.env" (
 )
 
 echo.
-echo  Starting servers... Browser will open in 6 seconds.
+echo  Starting servers... Browser will open automatically when ready.
 echo.
-
-:: Open browser after Vite is ready
-start "" powershell -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://localhost:5173'"
 
 :: Start backend + frontend
 npm run dev

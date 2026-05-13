@@ -11,9 +11,7 @@ const ALLOWED_TABLES = [
   'vet_table',
 ];
 
-// GET /api/vetdata/:table
-// Queries local PostgreSQL first (full data), falls back to Supabase (synced subset)
-// Never combines both — local DB is the single source of truth
+// GET /api/vetdata/:table — all data from Supabase using service role (bypasses RLS)
 router.get('/:table', requireAuth, async (req, res) => {
   const { table } = req.params;
 
@@ -21,23 +19,26 @@ router.get('/:table', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `Table "${table}" is not accessible` });
   }
 
-  // ── Try local PostgreSQL first ─────────────────────────────────────────────
-  if (process.env.LOCAL_DATABASE_URL) {
-    try {
-      const { Pool } = require('pg');
-      const pool = new Pool({ connectionString: process.env.LOCAL_DATABASE_URL, connectionTimeoutMillis: 3000 });
-      const sql = buildQuery(table);
-      const { rows } = await pool.query(sql);
-      await pool.end();
-      if (rows.length > 0) return res.json(rows);
-    } catch { /* local DB unavailable, fall through */ }
-  }
-
-  // ── Fallback: Supabase ─────────────────────────────────────────────────────
   try {
     const getSupabase = require('../supabase');
     const supabase = getSupabase();
-    const { data, error } = await supabase.from(table).select('*');
+
+    let query;
+    switch (table) {
+      case 'owner_table':
+        query = supabase.from(table).select('*').is('deleted_at', null).order('owner_id');
+        break;
+      case 'pet_table':
+        query = supabase.from(table).select('*').is('deleted_at', null).order('pet_id');
+        break;
+      case 'vaccine_table':
+        query = supabase.from(table).select('*').is('deleted_at', null).order('vaccine_id');
+        break;
+      default:
+        query = supabase.from(table).select('*');
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data ?? []);
   } catch (err) {
@@ -45,29 +46,60 @@ router.get('/:table', requireAuth, async (req, res) => {
   }
 });
 
-// Build table-specific SQL: deduplicates rows and hides soft-deleted entries
-function buildQuery(table) {
-  switch (table) {
-    case 'owner_table':
-      // Deduplicate by (owner_name, contact_number), keep lowest owner_id, hide deleted
-      return `
-        SELECT DISTINCT ON (LOWER(owner_name), contact_number) *
-        FROM owner_table
-        WHERE deleted_at IS NULL
-        ORDER BY LOWER(owner_name), contact_number, owner_id
-      `;
-    case 'pet_table':
-      return `
-        SELECT DISTINCT ON (pet_name, owner_id) *
-        FROM pet_table
-        WHERE deleted_at IS NULL
-        ORDER BY pet_name, owner_id, pet_id
-      `;
-    case 'vaccine_table':
-      return `SELECT * FROM vaccine_table WHERE deleted_at IS NULL ORDER BY vaccine_id`;
-    default:
-      return `SELECT * FROM ${table} ORDER BY 1`;
+// Primary key per table
+const TABLE_PKS = {
+  owner_table:        'owner_id',
+  pet_table:          'pet_id',
+  vaccine_table:      'vaccine_id',
+  approval_id_table:  'approval_id',
+  drive_session_table:'session_id',
+  barangay_table:     'barangay_id',
+  vet_table:          'vet_id',
+};
+
+// Tables that use soft delete (have deleted_at column)
+const SOFT_DELETE = new Set(['owner_table', 'pet_table', 'vaccine_table']);
+
+// PATCH /api/vetdata/:table/:id — update any allowed table row
+router.patch('/:table/:id', requireAuth, async (req, res) => {
+  const { table, id } = req.params;
+  if (!ALLOWED_TABLES.includes(table)) return res.status(400).json({ error: 'Table not allowed' });
+
+  const pk = TABLE_PKS[table];
+  const fields = req.body;
+  delete fields[pk]; // never update the primary key
+
+  try {
+    const getSupabase = require('../supabase');
+    const supabase = getSupabase();
+    const { error } = await supabase.from(table).update(fields).eq(pk, id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
   }
-}
+});
+
+// DELETE /api/vetdata/:table/:id — soft or hard delete
+router.delete('/:table/:id', requireAuth, async (req, res) => {
+  const { table, id } = req.params;
+  if (!ALLOWED_TABLES.includes(table)) return res.status(400).json({ error: 'Table not allowed' });
+
+  const pk = TABLE_PKS[table];
+  try {
+    const getSupabase = require('../supabase');
+    const supabase = getSupabase();
+    let error;
+    if (SOFT_DELETE.has(table)) {
+      ({ error } = await supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq(pk, id));
+    } else {
+      ({ error } = await supabase.from(table).delete().eq(pk, id));
+    }
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 module.exports = router;

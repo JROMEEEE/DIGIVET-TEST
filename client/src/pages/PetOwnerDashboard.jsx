@@ -3,30 +3,50 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
-async function apiFetch(path) {
+async function apiFetch(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  if (!token) return [];
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) return [];
+  if (!token) return options.method ? null : [];
+  const res = await fetch(path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers },
+  });
+  if (!res.ok) return options.method ? null : [];
   return res.json();
 }
 
-function getVaccineStatus(lastDateStr) {
-  if (!lastDateStr) return { label: 'No record', color: '#888', bg: '#f5f5f5', urgent: false, days: null };
-  const last = new Date(lastDateStr);
-  const next = new Date(last);
-  next.setFullYear(next.getFullYear() + 1);
-  const today = new Date();
-  const daysUntil = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+const TOTAL_DOSES_REQUIRED = 3; // full vaccination series = 3 annual doses
 
+function getVaccineStatus(lastDateStr, totalDoses = 0) {
+  if (!lastDateStr || totalDoses === 0)
+    return { label: 'No vaccination record', color: '#888', bg: '#f5f5f5', urgent: false, days: null };
+
+  const last     = new Date(lastDateStr);
+  const nextDue  = new Date(last);
+  nextDue.setFullYear(nextDue.getFullYear() + 1);
+  const today    = new Date();
+  const daysUntil = Math.ceil((nextDue - today) / (1000 * 60 * 60 * 24));
+  const doseLabel = totalDoses >= TOTAL_DOSES_REQUIRED
+    ? 'Series complete'
+    : `Dose ${totalDoses} of ${TOTAL_DOSES_REQUIRED}`;
+
+  // Series fully complete — protection lasts until next annual due date
+  if (totalDoses >= TOTAL_DOSES_REQUIRED) {
+    if (daysUntil < 0)
+      return { label: `Series expired — renewal overdue by ${Math.abs(daysUntil)} days`, color: '#fff', bg: '#dc2626', urgent: true, days: daysUntil };
+    if (daysUntil <= 30)
+      return { label: `Series renewal due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`, color: '#7a5800', bg: '#fef9c3', urgent: true, days: daysUntil };
+    return { label: `Series complete — next renewal ${nextDue.toLocaleDateString()}`, color: '#166534', bg: '#dcfce7', urgent: false, days: daysUntil };
+  }
+
+  // Series still in progress (dose 1 or 2 of 3)
   if (daysUntil < 0)
-    return { label: `Overdue by ${Math.abs(daysUntil)} days`, color: '#fff', bg: '#dc2626', urgent: true, days: daysUntil };
+    return { label: `${doseLabel} — overdue by ${Math.abs(daysUntil)} days`, color: '#fff', bg: '#dc2626', urgent: true, days: daysUntil };
   if (daysUntil <= 30)
-    return { label: `Due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`, color: '#7a5800', bg: '#fef9c3', urgent: true, days: daysUntil };
+    return { label: `${doseLabel} — due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`, color: '#7a5800', bg: '#fef9c3', urgent: true, days: daysUntil };
   if (daysUntil <= 90)
-    return { label: `Due in ${daysUntil} days`, color: '#1e40af', bg: '#dbeafe', urgent: false, days: daysUntil };
-  return { label: `Due ${next.toLocaleDateString()}`, color: '#166534', bg: '#dcfce7', urgent: false, days: daysUntil };
+    return { label: `${doseLabel} — due in ${daysUntil} days`, color: '#1e40af', bg: '#dbeafe', urgent: false, days: daysUntil };
+  return { label: `${doseLabel} — next dose ${nextDue.toLocaleDateString()}`, color: '#166534', bg: '#dcfce7', urgent: false, days: daysUntil };
 }
 
 const MAROON = '#7B1B2E';
@@ -36,10 +56,11 @@ const MAROON_LIGHT = '#f5e8ea';
 export default function PetOwnerDashboard() {
   const { user, fullName, ownerId, logout } = useAuth();
   const navigate = useNavigate();
-  const [pets, setPets] = useState([]);
+  const [pets, setPets]             = useState([]);
   const [petsLoading, setPetsLoading] = useState(true);
   const [vaccinations, setVaccinations] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [editRequests, setEditRequests] = useState([]); // pending approval requests
+  const [activeTab, setActiveTab]   = useState('overview');
 
   function loadPets() {
     setPetsLoading(true);
@@ -53,9 +74,15 @@ export default function PetOwnerDashboard() {
       .then(data => setVaccinations(data ?? []));
   }
 
+  function loadEditRequests() {
+    apiFetch('/api/pets/edit-requests')
+      .then(data => setEditRequests(Array.isArray(data) ? data : []));
+  }
+
   useEffect(() => {
     loadPets();
     loadVaccinations();
+    loadEditRequests();
   }, []);
 
   async function handleLogout() {
@@ -130,7 +157,7 @@ export default function PetOwnerDashboard() {
           <Overview pets={pets} petsLoading={petsLoading} fullName={fullName} setActiveTab={setActiveTab} vaccinations={vaccinations} />
         )}
         {activeTab === 'records' && (
-          <Records pets={pets} petsLoading={petsLoading} onPetUpdated={loadPets} vaccinations={vaccinations} />
+          <Records pets={pets} petsLoading={petsLoading} onPetUpdated={() => { loadPets(); loadEditRequests(); }} vaccinations={vaccinations} editRequests={editRequests} />
         )}
       </main>
     </div>
@@ -142,7 +169,7 @@ export default function PetOwnerDashboard() {
 function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const urgent = vaccinations.filter(v => getVaccineStatus(v.last_vaccine_date).urgent);
+  const urgent = vaccinations.filter(v => getVaccineStatus(v.last_vaccine_date, v.total_doses).urgent);
 
   return (
     <>
@@ -159,7 +186,7 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
       {urgent.length > 0 && (
         <div style={{ marginBottom: '1.5rem' }}>
           {urgent.map(v => {
-            const status = getVaccineStatus(v.last_vaccine_date);
+            const status = getVaccineStatus(v.last_vaccine_date, v.total_doses);
             return (
               <div key={v.pet_id} style={{
                 display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -226,24 +253,32 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
 
 // ── Records ───────────────────────────────────────────────────────────────────
 
-function Records({ pets, petsLoading, onPetUpdated, vaccinations }) {
+function Records({ pets, petsLoading, onPetUpdated, vaccinations, editRequests }) {
   const [editing, setEditing] = useState(null);
-  const vaccMap = Object.fromEntries(vaccinations.map(v => [v.pet_id, v]));
+  const vaccMap    = Object.fromEntries(vaccinations.map(v => [v.pet_id, v]));
+  // Map pet_id → latest pending request (if any)
+  const pendingMap = {};
+  editRequests.filter(r => r.status === 'pending').forEach(r => {
+    if (!pendingMap[r.pet_id]) pendingMap[r.pet_id] = r;
+  });
 
   return (
     <>
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>Pet Records</h1>
-        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>Your registered pets with vaccination status. Click Edit to correct any wrong information.</p>
+        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>
+          Your registered pets. Edit requests require veterinarian approval before changes take effect.
+        </p>
       </div>
 
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-        <PetList pets={pets} loading={petsLoading} onEdit={pet => setEditing(pet)} vaccMap={vaccMap} />
+        <PetList pets={pets} loading={petsLoading} onEdit={pet => setEditing(pet)} vaccMap={vaccMap} pendingMap={pendingMap} />
       </div>
 
       {editing && (
         <EditPetModal
           pet={editing}
+          pendingRequest={pendingMap[editing.pet_id] ?? null}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); onPetUpdated(); }}
         />
@@ -254,7 +289,7 @@ function Records({ pets, petsLoading, onPetUpdated, vaccinations }) {
 
 // ── PetList ───────────────────────────────────────────────────────────────────
 
-function PetList({ pets, loading, onEdit, compact = false, vaccMap = {} }) {
+function PetList({ pets, loading, onEdit, compact = false, vaccMap = {}, pendingMap = {} }) {
   if (loading) {
     return <p style={{ color: '#aaa', fontSize: '0.88rem', textAlign: 'center', padding: '2.5rem', margin: 0 }}>Loading pets…</p>;
   }
@@ -287,7 +322,7 @@ function PetList({ pets, loading, onEdit, compact = false, vaccMap = {} }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
-          {['Pet Name', 'Type', 'Color', 'Age', 'Next Vaccination', ''].map(h => (
+          {['Pet Name', 'Type', 'Color', 'Age', 'Next Vaccination', 'Status', ''].map(h => (
             <th key={h} style={{ padding: '0.85rem 1.25rem', textAlign: 'left', fontSize: '0.78rem', fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
           ))}
         </tr>
@@ -310,7 +345,7 @@ function PetList({ pets, loading, onEdit, compact = false, vaccMap = {} }) {
             <td style={{ padding: '1rem 1.25rem' }}>
               {(() => {
                 const vacc = vaccMap[pet.pet_id];
-                const status = getVaccineStatus(vacc?.last_vaccine_date);
+                const status = getVaccineStatus(vacc?.last_vaccine_date, vacc?.total_doses);
                 return (
                   <span style={{
                     background: status.bg, color: status.color,
@@ -322,12 +357,19 @@ function PetList({ pets, loading, onEdit, compact = false, vaccMap = {} }) {
                 );
               })()}
             </td>
+            <td style={{ padding: '1rem 1.25rem' }}>
+              {pendingMap[pet.pet_id] && (
+                <span style={{ background: '#fef9c3', border: '1px solid #f0d080', color: '#7a5800', borderRadius: '999px', padding: '0.2rem 0.7rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  ⏳ Pending Approval
+                </span>
+              )}
+            </td>
             <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
               <button
                 onClick={() => onEdit(pet)}
                 style={{ background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '6px', padding: '0.4rem 0.9rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
               >
-                Edit
+                {pendingMap[pet.pet_id] ? 'View Request' : 'Edit'}
               </button>
             </td>
           </tr>
@@ -339,47 +381,65 @@ function PetList({ pets, loading, onEdit, compact = false, vaccMap = {} }) {
 
 // ── Edit Pet Modal ────────────────────────────────────────────────────────────
 
-function EditPetModal({ pet, onClose, onSaved }) {
+function EditPetModal({ pet, pendingRequest, onClose, onSaved }) {
+  const initial = pendingRequest ?? pet;
   const [form, setForm] = useState({
-    pet_name:  pet.pet_name  ?? '',
-    pet_type:  pet.pet_type  ?? '',
-    pet_color: pet.pet_color ?? '',
-    pet_age:   pet.pet_age   ?? '',
+    pet_name:  initial.pet_name  ?? '',
+    pet_type:  initial.pet_type  ?? '',
+    pet_color: initial.pet_color ?? '',
+    pet_age:   initial.pet_age   ?? '',
   });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState('');
 
   async function handleSave(e) {
     e.preventDefault();
     if (!form.pet_name.trim()) return setError('Pet name is required.');
     setError('');
     setSaving(true);
-    const { error: dbError } = await supabase
-      .from('pet_table')
-      .update({
-        pet_name:  form.pet_name.trim(),
-        pet_type:  form.pet_type.trim(),
-        pet_color: form.pet_color.trim(),
-        pet_age:   form.pet_age.trim(),
-      })
-      .eq('pet_id', pet.pet_id);
+
+    const res = await apiFetch('/api/pets/edit-request', {
+      method: 'POST',
+      body: JSON.stringify({ pet_id: pet.pet_id, ...form }),
+    });
 
     setSaving(false);
-    if (dbError) { setError('Failed to save. Please try again.'); return; }
-    onSaved();
+    if (!res || res.error) {
+      setError(res?.error || 'Failed to submit request. Please try again.');
+      return;
+    }
+    setSuccess(true);
+    setTimeout(() => { onSaved(); }, 1800);
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: 440, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
           <div>
-            <h2 style={{ fontWeight: 800, color: '#111', margin: '0 0 0.2rem', fontSize: '1.1rem' }}>Edit Pet Information</h2>
-            <p style={{ color: '#888', fontSize: '0.82rem', margin: 0 }}>Correct any wrong details for this pet.</p>
+            <h2 style={{ fontWeight: 800, color: '#111', margin: '0 0 0.2rem', fontSize: '1.1rem' }}>
+              {pendingRequest ? 'Pending Edit Request' : 'Request Pet Info Edit'}
+            </h2>
+            <p style={{ color: '#888', fontSize: '0.82rem', margin: 0 }}>
+              {pendingRequest ? 'This request is awaiting veterinarian approval.' : 'Changes require vet approval before taking effect.'}
+            </p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#aaa', lineHeight: 1 }}>✕</button>
         </div>
+
+        {success && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: '8px', padding: '0.85rem 1rem', fontSize: '0.88rem', marginBottom: '1.25rem', textAlign: 'center' }}>
+            ✓ Edit request submitted! A veterinarian will review it shortly.
+          </div>
+        )}
+
+        {pendingRequest && (
+          <div style={{ background: '#fef9c3', border: '1px solid #f0d080', borderRadius: '8px', padding: '0.7rem 1rem', fontSize: '0.82rem', color: '#7a5800', marginBottom: '1.25rem' }}>
+            ⏳ You already have a pending request for this pet. You can submit a new one to replace it.
+          </div>
+        )}
 
         {error && (
           <div style={{ background: '#fff5f5', border: '1px solid #ffcccc', color: '#cc0000', borderRadius: '8px', padding: '0.7rem 1rem', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
@@ -413,7 +473,7 @@ function EditPetModal({ pet, onClose, onSaved }) {
               onMouseOver={e => { if (!saving) e.currentTarget.style.background = MAROON_DARK; }}
               onMouseOut={e => { if (!saving) e.currentTarget.style.background = MAROON; }}
             >
-              {saving ? 'Saving…' : 'Save Changes'}
+              {saving ? 'Submitting…' : 'Submit Edit Request'}
             </button>
           </div>
         </form>

@@ -123,28 +123,10 @@ async function generateSession(supabase, email, displayName, role, ownerId, pass
   const metadata = { full_name: displayName, role };
   if (ownerId) metadata.owner_id = ownerId;
 
-  // Find existing Supabase auth account for this email
-  const { data: listData } = await supabase.auth.admin.listUsers();
-  const existing = listData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+  // upsertSupabaseUser: tries createUser first, updates on conflict — no listUsers() needed
+  const { upsertSupabaseUser } = require('./authHelpers');
+  await upsertSupabaseUser(supabase, email, password, metadata);
 
-  if (existing) {
-    // Sync password, confirm email, and update metadata
-    await supabase.auth.admin.updateUserById(existing.id, {
-      password,
-      email_confirm: true,
-      user_metadata: metadata,
-    });
-  } else {
-    // Create a new confirmed Supabase account
-    await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: metadata,
-    });
-  }
-
-  // Frontend will now call signInWithPassword directly — no magic link needed
   return res.json({ email, role });
 }
 
@@ -177,19 +159,14 @@ router.post('/register-owner', async (req, res) => {
       return res.status(409).json({ error: 'An account already exists for this email. Please sign in.' });
     }
 
-    // Generate a secure random password
+    const { generatePassword } = require('./authHelpers');
     const password = generatePassword();
 
-    // Create Supabase account with confirmed email
-    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+    const { error: createError } = await supabase.auth.admin.createUser({
       email: email.toLowerCase().trim(),
       password,
       email_confirm: true,
-      user_metadata: {
-        full_name: owner.owner_name,
-        role: 'pet_owner',
-        owner_id: owner.owner_id,
-      },
+      user_metadata: { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id },
     });
 
     if (createError) return res.status(500).json({ error: 'Failed to create account: ' + createError.message });
@@ -199,11 +176,6 @@ router.post('/register-owner', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-function generatePassword() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
 
 // POST /api/auth/verify-owner
 // Checks contact_number against owner_table
@@ -303,6 +275,62 @@ router.post('/qr-login', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// POST /api/auth/send-owner-credentials
+// Generates credentials for a pet owner and emails them
+router.post('/send-owner-credentials', requireAuth, async (req, res) => {
+  const { owner_id } = req.body;
+  if (!owner_id) return res.status(400).json({ error: 'owner_id required' });
+
+  try {
+    const getSupabase = require('../supabase');
+    const supabase = getSupabase();
+
+    // Get owner details from Supabase owner_table
+    const { data: owner, error: ownerErr } = await supabase
+      .from('owner_table')
+      .select('owner_id, owner_name, email')
+      .eq('owner_id', owner_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (ownerErr || !owner) return res.status(404).json({ error: 'Owner not found' });
+    if (!owner.email)       return res.status(400).json({ error: 'This owner has no email address on record' });
+
+    // Generate a secure readable password
+    const { generatePassword } = require('./authHelpers');
+    const password = generatePassword();
+
+    // Create or update their Supabase auth account
+    const { data: listData } = await supabase.auth.admin.listUsers();
+    const existing = listData?.users?.find(u => u.email?.toLowerCase() === owner.email.toLowerCase());
+
+    if (existing) {
+      await supabase.auth.admin.updateUserById(existing.id, {
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id },
+      });
+    } else {
+      await supabase.auth.admin.createUser({
+        email: owner.email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id },
+      });
+    }
+
+    // Send credentials via email
+    const { sendCredentialsEmail } = require('./authHelpers');
+    await sendCredentialsEmail(owner.email, owner.owner_name, password);
+
+    res.json({ success: true, message: `Credentials sent to ${owner.email}` });
+  } catch (err) {
+    console.error('send-owner-credentials error:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
 
 // POST /api/auth/set-owner-role
 // Called after OTP login when user has no role — looks up owner by email and sets pet_owner role
