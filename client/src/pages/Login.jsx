@@ -1,30 +1,87 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const MAROON = '#7B1B2E';
 const MAROON_DARK = '#5a1221';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  function redirectByRole(role) {
+    navigate(role === 'veterinarian' ? '/vet' : '/dashboard', { replace: true });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSubmitting(true);
+
     try {
+      // ── Try Supabase auth first (for accounts created via web portal) ──
       const user = await login(form);
-      const role = user?.user_metadata?.role;
-      navigate(role === 'veterinarian' ? '/vet' : '/dashboard', { replace: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
+      redirectByRole(user?.user_metadata?.role);
+      return;
+    } catch {
+      // falls through to local login
     }
+
+    // ── Fallback 1: local system accounts (user_profile table) ──
+    try {
+      const res = await fetch('/api/auth/local-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, password: form.password }),
+      }).catch(() => null);
+
+      if (res) {
+        const data = await res.json().catch(() => null);
+        if (res.ok && data) {
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: form.email,
+            password: form.password,
+          });
+          if (!signInError) {
+            await refreshUser();
+            redirectByRole(data.role);
+            return;
+          }
+        }
+      }
+    } catch { /* fall through */ }
+
+    // ── Fallback 2: Supabase OTP / access code sent by local system via email ──
+    try {
+      const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
+        email: form.email,
+        token: form.password,
+        type: 'email',
+      });
+
+      if (!otpError && otpData?.user) {
+        // If new account has no role set, default to pet_owner and set owner_id
+        const user = otpData.user;
+        if (!user.user_metadata?.role) {
+          await fetch('/api/auth/set-owner-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: form.email }),
+          }).catch(() => null);
+        }
+        await refreshUser();
+        const freshRole = (await supabase.auth.getSession()).data?.session?.user?.user_metadata?.role;
+        redirectByRole(freshRole ?? 'pet_owner');
+        return;
+      }
+    } catch { /* fall through */ }
+
+    setError('Invalid email or password. Please check your credentials and try again.');
+    setSubmitting(false);
   }
 
   return (
@@ -67,11 +124,13 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <input type="text"     style={{ display: 'none' }} aria-hidden="true" />
+            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
             <div>
               <label style={labelStyle}>Email address</label>
               <input
-                type="email" required autoComplete="email"
+                type="email" required autoComplete="off"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="you@example.com"
@@ -81,7 +140,7 @@ export default function Login() {
             <div>
               <label style={labelStyle}>Password</label>
               <input
-                type="password" required autoComplete="current-password"
+                type="password" required autoComplete="new-password"
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                 placeholder="••••••••"
@@ -113,12 +172,5 @@ export default function Login() {
   );
 }
 
-const labelStyle = {
-  display: 'block', fontSize: '0.83rem', fontWeight: 600, color: '#444', marginBottom: '0.4rem',
-};
-
-const inputStyle = {
-  width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0',
-  borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.9rem',
-  outline: 'none', background: '#fafafa',
-};
+const labelStyle = { display: 'block', fontSize: '0.83rem', fontWeight: 600, color: '#444', marginBottom: '0.4rem' };
+const inputStyle = { width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none', background: '#fafafa' };

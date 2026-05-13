@@ -4,7 +4,7 @@ import StatusCheck from './pages/StatusCheck';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PetOwnerDashboard from './pages/PetOwnerDashboard';
-import VetPortal from './pages/VetPortal';
+import VetDashboard from './pages/VetDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -26,7 +26,7 @@ function App() {
         path="/vet"
         element={
           <ProtectedRoute requiredRole="veterinarian">
-            <VetPortal />
+            <VetDashboard />
           </ProtectedRoute>
         }
       />

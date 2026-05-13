@@ -21,6 +21,8 @@ app.get('/', (req, res) => {
 app.use('/api/health', require('./routes/health'));
 app.use('/api/status', require('./routes/status'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/vetdata', require('./routes/vetdata'));
+app.use('/api/pets', require('./routes/pets'));
 // app.use('/api/animals', require('./routes/animals'));
 // app.use('/api/clients', require('./routes/clients'));
 // app.use('/api/appointments', require('./routes/appointments'));

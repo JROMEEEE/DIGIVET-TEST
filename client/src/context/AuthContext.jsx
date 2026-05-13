@@ -20,11 +20,11 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function register({ email, password, fullName, role }) {
+  async function register({ email, password, fullName, role, qrToken, ownerId }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, role } },
+      options: { data: { full_name: fullName, role, qr_token: qrToken ?? null, owner_id: ownerId ?? null } },
     });
     if (error) throw error;
     return data;
@@ -40,11 +40,19 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
   }
 
+  async function refreshUser() {
+    const { data: { session } } = await supabase.auth.getSession();
+    setUser(session?.user ?? null);
+    return session?.user ?? null;
+  }
+
   const role = user?.user_metadata?.role ?? null;
   const fullName = user?.user_metadata?.full_name ?? user?.email ?? '';
+  const qrToken = user?.user_metadata?.qr_token ?? null;
+  const ownerId = user?.user_metadata?.owner_id ?? null;
 
   return (
-    <AuthContext.Provider value={{ user, role, fullName, loading, register, login, logout }}>
+    <AuthContext.Provider value={{ user, role, fullName, qrToken, ownerId, loading, register, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
