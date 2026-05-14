@@ -376,91 +376,113 @@ function RecordsTab({ refs }) {
 
   return (
     <>
+      {/* Page header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>📋 Records</h1>
-        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>Grouped by barangay. Filter by drive session or search by name.</p>
+        <p style={{ color: '#888', margin: 0, fontSize: '0.875rem' }}>Grouped by barangay — filter by drive session or search to narrow results.</p>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners, pets, vaccines…"
-          style={{ ...selectStyle, flex: 1, minWidth: 200 }} />
+      {/* Filter bar */}
+      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.9rem' }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners, pets, vaccines…"
+            style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e8e8e8', borderRadius: '8px', padding: '0.6rem 0.9rem 0.6rem 2.2rem', fontSize: '0.875rem', outline: 'none', background: '#fafafa', color: '#333' }} />
+        </div>
         <select value={filterBrgy} onChange={e => setFilterBrgy(e.target.value)} style={selectStyle}>
-          <option value="">All Barangays</option>
-          {barangays.map(b => (
-            <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name}</option>
-          ))}
+          <option value="">🏘️ All Barangays</option>
+          {barangays.map(b => <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name}</option>)}
         </select>
         <select value={filterSession} onChange={e => setFilterSession(e.target.value)} style={selectStyle}>
-          <option value="">All Drive Sessions</option>
+          <option value="">📍 All Drive Sessions</option>
           {sessions.sort((a,b) => new Date(b.session_date) - new Date(a.session_date)).map(s => (
             <option key={s.session_id} value={s.session_id}>
-              {refs.barangayMap[s.barangay_id] ?? `Brgy #${s.barangay_id}`} — {s.session_date ? new Date(s.session_date).toLocaleDateString() : '—'}
+              {refs.barangayMap[s.barangay_id] ?? `Brgy #${s.barangay_id}`} · {s.session_date ? new Date(s.session_date).toLocaleDateString() : '—'}
             </option>
           ))}
         </select>
         {(filterBrgy || filterSession || search) && (
           <button onClick={() => { setFilterBrgy(''); setFilterSession(''); setSearch(''); }}
-            style={{ background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.84rem', cursor: 'pointer', color: '#666', fontWeight: 600 }}>
-            Clear
+            style={{ background: 'transparent', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer', color: '#888', fontWeight: 600 }}>
+            ✕ Clear
           </button>
         )}
       </div>
 
       {loading ? (
-        <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem' }}>Loading…</p>
+        <p style={{ color: '#bbb', textAlign: 'center', padding: '4rem', fontSize: '0.9rem' }}>Loading records…</p>
       ) : barangayIds.length === 0 ? (
-        <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem' }}>No records found.</p>
+        <div style={{ textAlign: 'center', padding: '4rem', color: '#bbb' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔍</div>
+          <p style={{ fontWeight: 600, color: '#555', margin: '0 0 0.3rem' }}>No records found</p>
+          <p style={{ fontSize: '0.85rem', margin: 0 }}>Try adjusting your filters or search term.</p>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {barangayIds.map(brgyId => {
-            const brgyName    = refs.barangayMap[brgyId] ?? `Barangay #${brgyId}`;
-            const brgyOwners  = byBarangay[brgyId];
-            const brgyKey     = `b${brgyId}`;
-            const brgyOpen    = expanded[brgyKey] !== false; // open by default
+            const brgyName   = refs.barangayMap[brgyId] ?? `Barangay #${brgyId}`;
+            const brgyOwners = byBarangay[brgyId];
+            const brgyKey    = `b${brgyId}`;
+            const brgyOpen   = expanded[brgyKey] !== false;
 
             return (
-              <div key={brgyId}>
-                {/* Barangay header */}
+              <div key={brgyId} style={{ background: '#fff', borderRadius: '14px', border: '1px solid #eee', overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
+
+                {/* Barangay header — subtle accent style */}
                 <div
                   onClick={() => toggle(brgyKey)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 1rem', background: MAROON, borderRadius: '10px', cursor: 'pointer', marginBottom: '0.5rem' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', borderLeft: `4px solid ${MAROON}`, background: brgyOpen ? MAROON_LIGHT : '#fafafa', cursor: 'pointer', borderBottom: brgyOpen ? `1px solid ${MAROON}20` : 'none', transition: 'background 0.15s' }}
                 >
-                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>{brgyOpen ? '▾' : '▸'}</span>
-                  <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>🏘️ {brgyName}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
+                  <span style={{ color: MAROON, fontSize: '1rem' }}>🏘️</span>
+                  <span style={{ fontWeight: 800, color: '#111', fontSize: '0.95rem', flex: 1 }}>{brgyName}</span>
+                  <span style={{ background: MAROON, color: '#fff', borderRadius: '999px', padding: '0.15rem 0.7rem', fontSize: '0.73rem', fontWeight: 700 }}>
                     {brgyOwners.length} owner{brgyOwners.length !== 1 ? 's' : ''}
                   </span>
+                  <span style={{ color: '#bbb', fontSize: '0.85rem', marginLeft: '0.25rem' }}>{brgyOpen ? '▾' : '▸'}</span>
                 </div>
 
-                {/* Owners in this barangay */}
-                {brgyOpen && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '0.5rem' }}>
-                    {brgyOwners.map(owner => {
-                      const ownerKey  = `o${owner.owner_id}`;
-                      const ownerOpen = expanded[ownerKey];
-                      const ownerPets = (petsByOwner[owner.owner_id] ?? []).filter(p =>
-                        !petIdsInSession || petIdsInSession.has(p.pet_id)
-                      );
+                {/* Owners */}
+                {brgyOpen && brgyOwners.map((owner, oi) => {
+                  const ownerKey  = `o${owner.owner_id}`;
+                  const ownerOpen = expanded[ownerKey];
+                  const ownerPets = (petsByOwner[owner.owner_id] ?? []).filter(p =>
+                    !petIdsInSession || petIdsInSession.has(p.pet_id)
+                  );
 
-                      return (
-                        <div key={owner.owner_id} style={{ background: '#fff', borderRadius: '10px', border: '1px solid #eee', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                          {/* Owner row */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', background: ownerOpen ? '#fdf2f4' : '#fff', borderBottom: ownerOpen ? '1px solid #f0f0f0' : 'none' }}>
-                            <span onClick={() => toggle(ownerKey)} style={{ cursor: 'pointer', color: '#aaa', fontSize: '0.85rem', userSelect: 'none' }}>{ownerOpen ? '▾' : '▸'}</span>
-                            <div onClick={() => toggle(ownerKey)} style={{ flex: 1, cursor: 'pointer' }}>
-                              <span style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{owner.owner_name}</span>
-                              <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '0.75rem' }}>{owner.contact_number}</span>
-                            </div>
-                            <span style={{ background: ownerPets.length ? MAROON_LIGHT : '#f5f5f5', color: ownerPets.length ? MAROON : '#aaa', borderRadius: '999px', padding: '0.15rem 0.6rem', fontSize: '0.73rem', fontWeight: 700, marginRight: 6 }}>
-                              {ownerPets.length} pet{ownerPets.length !== 1 ? 's' : ''}
-                            </span>
-                            {btnEdit('owner_table', 'owner_id', owner, [{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }], 'Owner')}
-                            {btnDel('owner_table', 'owner_id', owner.owner_name, owner)}
-                          </div>
+                  return (
+                    <div key={owner.owner_id} style={{ borderTop: oi > 0 ? '1px solid #f5f5f5' : '1px solid #f0f0f0' }}>
 
-                          {/* Pets */}
-                          {ownerOpen && ownerPets.map(pet => {
+                      {/* Owner row */}
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', background: ownerOpen ? '#fdf7f8' : '#fff', cursor: 'pointer', transition: 'background 0.1s' }}
+                        onClick={() => toggle(ownerKey)}
+                        onMouseOver={e => { if (!ownerOpen) e.currentTarget.style.background = '#fafafa'; }}
+                        onMouseOut={e => { if (!ownerOpen) e.currentTarget.style.background = '#fff'; }}
+                      >
+                        {/* Avatar */}
+                        <div style={{ width: 34, height: 34, background: MAROON_LIGHT, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 700, color: MAROON, fontSize: '0.82rem' }}>
+                          {owner.owner_name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{owner.owner_name}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#888', marginTop: '0.1rem' }}>{owner.contact_number}</div>
+                        </div>
+                        <span style={{ background: ownerPets.length ? '#eef7ee' : '#f5f5f5', color: ownerPets.length ? '#16a34a' : '#aaa', borderRadius: '6px', padding: '0.2rem 0.65rem', fontSize: '0.76rem', fontWeight: 600, marginRight: '0.5rem', whiteSpace: 'nowrap' }}>
+                          🐾 {ownerPets.length} pet{ownerPets.length !== 1 ? 's' : ''}
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.35rem' }} onClick={e => e.stopPropagation()}>
+                          {btnEdit('owner_table', 'owner_id', owner, [{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }], 'Owner')}
+                          {btnDel('owner_table', 'owner_id', owner.owner_name, owner)}
+                        </div>
+                        <span style={{ color: '#ccc', fontSize: '0.8rem', marginLeft: '0.5rem' }}>{ownerOpen ? '▾' : '▸'}</span>
+                      </div>
+
+                      {/* Pets */}
+                      {ownerOpen && (
+                        <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                          {ownerPets.length === 0 ? (
+                            <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.5rem 0.75rem 3.5rem', margin: 0 }}>No pets registered for this owner.</p>
+                          ) : ownerPets.map((pet, pi) => {
                             const petKey  = `p${pet.pet_id}`;
                             const petOpen = expanded[petKey];
                             const petVacc = (vaccByPet[pet.pet_id] ?? [])
@@ -468,56 +490,84 @@ function RecordsTab({ refs }) {
                               .sort((a, b) => new Date(b.vaccine_date) - new Date(a.vaccine_date));
 
                             return (
-                              <div key={pet.pet_id} style={{ borderTop: '1px solid #f5f5f5' }}>
+                              <div key={pet.pet_id} style={{ borderTop: pi > 0 ? '1px solid #f0f0f0' : 'none' }}>
+
                                 {/* Pet row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1.25rem 0.7rem 2.5rem', background: petOpen ? '#f8f8fb' : 'transparent' }}>
-                                  <span onClick={() => toggle(petKey)} style={{ cursor: 'pointer', color: '#bbb', fontSize: '0.8rem', userSelect: 'none' }}>{petOpen ? '▾' : '▸'}</span>
-                                  <span style={{ fontSize: '1.1rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
-                                  <div onClick={() => toggle(petKey)} style={{ flex: 1, cursor: 'pointer' }}>
-                                    <span style={{ fontWeight: 600, color: '#222', fontSize: '0.87rem' }}>{pet.pet_name}</span>
-                                    <span style={{ color: '#888', fontSize: '0.77rem', marginLeft: '0.6rem' }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
+                                <div
+                                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1.25rem 0.75rem 3rem', cursor: 'pointer', background: petOpen ? '#f3f4f6' : 'transparent', transition: 'background 0.1s' }}
+                                  onClick={() => toggle(petKey)}
+                                  onMouseOver={e => { if (!petOpen) e.currentTarget.style.background = '#f5f5f5'; }}
+                                  onMouseOut={e => { if (!petOpen) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                  <span style={{ fontSize: '1.15rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ fontWeight: 600, color: '#222', fontSize: '0.875rem' }}>{pet.pet_name}</span>
+                                    <span style={{ color: '#999', fontSize: '0.77rem', marginLeft: '0.5rem' }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
                                   </div>
-                                  <span style={{ background: petVacc.length ? '#f0fdf4' : '#f5f5f5', color: petVacc.length ? '#16a34a' : '#aaa', borderRadius: '999px', padding: '0.15rem 0.6rem', fontSize: '0.72rem', fontWeight: 700, marginRight: 6 }}>
-                                    {petVacc.length} vaccine{petVacc.length !== 1 ? 's' : ''}
+                                  <span style={{ background: petVacc.length ? '#dcfce7' : '#f5f5f5', color: petVacc.length ? '#15803d' : '#aaa', borderRadius: '6px', padding: '0.18rem 0.6rem', fontSize: '0.74rem', fontWeight: 600, marginRight: '0.5rem', whiteSpace: 'nowrap' }}>
+                                    💉 {petVacc.length} dose{petVacc.length !== 1 ? 's' : ''}
                                   </span>
-                                  {btnEdit('pet_table', 'pet_id', pet, [{ key:'pet_name', label:'Pet Name', required:true }, { key:'pet_type', label:'Type / Species' }, { key:'pet_color', label:'Color' }, { key:'pet_age', label:'Age' }], 'Pet')}
-                                  {btnDel('pet_table', 'pet_id', pet.pet_name, pet)}
+                                  <div style={{ display: 'flex', gap: '0.35rem' }} onClick={e => e.stopPropagation()}>
+                                    {btnEdit('pet_table', 'pet_id', pet, [{ key:'pet_name', label:'Pet Name', required:true }, { key:'pet_type', label:'Type / Species' }, { key:'pet_color', label:'Color' }, { key:'pet_age', label:'Age' }], 'Pet')}
+                                    {btnDel('pet_table', 'pet_id', pet.pet_name, pet)}
+                                  </div>
+                                  <span style={{ color: '#ccc', fontSize: '0.78rem', marginLeft: '0.4rem' }}>{petOpen ? '▾' : '▸'}</span>
                                 </div>
 
                                 {/* Vaccination records */}
                                 {petOpen && (
-                                  <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                                  <div style={{ borderTop: '1px dashed #e8e8e8', background: '#fff' }}>
                                     {petVacc.length === 0 ? (
-                                      <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 4rem', margin: 0 }}>No vaccination records.</p>
-                                    ) : petVacc.map((v, vi) => (
-                                      <div key={v.vaccine_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 1.25rem 0.6rem 4rem', borderTop: vi > 0 ? '1px solid #f0f0f0' : 'none' }}>
-                                        <span style={{ fontSize: '1rem' }}>💉</span>
-                                        <div style={{ flex: 1, fontSize: '0.82rem' }}>
-                                          <span style={{ fontWeight: 600, color: '#333' }}>{v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}</span>
-                                          <span style={{ color: '#555', marginLeft: '0.6rem' }}>{v.vaccine_details || '—'}</span>
-                                          {v.manufacturer_no && <span style={{ color: '#aaa', marginLeft: '0.5rem', fontSize: '0.77rem' }}>· {v.manufacturer_no}</span>}
-                                          {v.approval_id && <span style={{ background: '#fef9c3', color: '#7a5800', borderRadius: '4px', padding: '0.1rem 0.45rem', fontSize: '0.71rem', fontWeight: 700, marginLeft: '0.5rem' }}>🆔 {approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>}
-                                          {v.session_id && <span style={{ background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', padding: '0.1rem 0.45rem', fontSize: '0.71rem', fontWeight: 600, marginLeft: '0.5rem' }}>📍 Session #{v.session_id}</span>}
-                                          <span style={{ color: '#bbb', marginLeft: '0.5rem', fontSize: '0.75rem' }}>{v.is_office_visit ? 'Office Visit' : 'Barangay Drive'}</span>
-                                        </div>
-                                        {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
-                                        {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
-                                      </div>
-                                    ))}
+                                      <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.5rem 0.75rem 5rem', margin: 0 }}>No vaccination records.</p>
+                                    ) : (
+                                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                        <thead>
+                                          <tr style={{ background: '#f8f9fa' }}>
+                                            {['Date', 'Vaccine', 'Manufacturer', 'Session', 'Type', ''].map(h => (
+                                              <th key={h} style={{ padding: '0.5rem 1rem 0.5rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 700, color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap', paddingLeft: h === 'Date' ? '5rem' : '1rem' }}>{h}</th>
+                                            ))}
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {petVacc.map((v, vi) => (
+                                            <tr key={v.vaccine_id} style={{ borderTop: '1px solid #f5f5f5' }}
+                                              onMouseOver={e => e.currentTarget.style.background = '#fafafa'}
+                                              onMouseOut={e => e.currentTarget.style.background = ''}
+                                            >
+                                              <td style={{ padding: '0.65rem 1rem 0.65rem 5rem', fontWeight: 600, color: '#444', whiteSpace: 'nowrap' }}>
+                                                {v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}
+                                              </td>
+                                              <td style={{ padding: '0.65rem 1rem' }}>
+                                                <span style={{ background: MAROON_LIGHT, color: MAROON, borderRadius: '5px', padding: '0.2rem 0.55rem', fontWeight: 600, fontSize: '0.8rem' }}>
+                                                  {v.vaccine_details || '—'}
+                                                </span>
+                                              </td>
+                                              <td style={{ padding: '0.65rem 1rem', color: '#777' }}>{v.manufacturer_no || '—'}</td>
+                                              <td style={{ padding: '0.65rem 1rem' }}>
+                                                {v.approval_id && <span style={{ background: '#fef9c3', color: '#92400e', borderRadius: '5px', padding: '0.18rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>🆔 {approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>}
+                                              </td>
+                                              <td style={{ padding: '0.65rem 1rem', color: '#999', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                                                {v.is_office_visit ? '🏥 Office' : '📍 Drive'}
+                                              </td>
+                                              <td style={{ padding: '0.65rem 1rem', whiteSpace: 'nowrap' }}>
+                                                {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
+                                                {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    )}
                                   </div>
                                 )}
                               </div>
                             );
                           })}
-
-                          {ownerOpen && ownerPets.length === 0 && (
-                            <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 2.5rem', margin: 0 }}>No pets registered.</p>
-                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
