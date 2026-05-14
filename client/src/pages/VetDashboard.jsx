@@ -1345,9 +1345,10 @@ function DataTable({ columns, rows, rawRows, onEdit, onDelete }) {
 
 // Generic edit modal — accepts field definitions
 function GenericEditModal({ title, fields, initialValues, onSave, onClose }) {
-  const [form, setForm] = useState({ ...initialValues });
+  const [form, setForm]     = useState({ ...initialValues });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [focused, setFocused] = useState('');
 
   async function handleSave(e) {
     e.preventDefault();
@@ -1362,32 +1363,78 @@ function GenericEditModal({ title, fields, initialValues, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: 440, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontWeight: 800, color: '#111', margin: 0, fontSize: '1.1rem' }}>Edit {title}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#aaa' }}>✕</button>
-        </div>
-        {error && <div style={{ background: '#fff5f5', border: '1px solid #ffcccc', color: '#cc0000', borderRadius: '8px', padding: '0.7rem 1rem', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>}
-        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {fields.map(({ key, label, type = 'text', required }) => (
-            <div key={key}>
-              <label style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600, color: '#444', marginBottom: '0.4rem' }}>{label}</label>
-              <input
-                type={type} required={required}
-                value={form[key] ?? ''}
-                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none', background: '#fafafa' }}
-              />
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.25rem' }}>
-            <button type="button" onClick={onClose} style={{ flex: 1, background: 'transparent', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.75rem', fontSize: '0.9rem', cursor: 'pointer', color: '#555' }}>Cancel</button>
-            <button type="submit" disabled={saving} style={{ flex: 2, background: saving ? '#b0b0b0' : MAROON, color: '#fff', border: 'none', borderRadius: '8px', padding: '0.75rem', fontSize: '0.9rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
-              {saving ? 'Saving…' : 'Save Changes'}
-            </button>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: '#fff', borderRadius: '18px', width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: MAROON, padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ fontWeight: 800, color: '#fff', margin: '0 0 0.15rem', fontSize: '1.05rem' }}>Edit {title}</h2>
+            <p style={{ color: 'rgba(255,255,255,0.65)', margin: 0, fontSize: '0.78rem' }}>Update the fields below and save</p>
           </div>
-        </form>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: '1rem', flexShrink: 0 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.5rem' }}>
+          {error && (
+            <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.85rem', marginBottom: '1.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            {fields.map(({ key, label, type = 'text', required }) => (
+              <div key={key}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#555', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  {label}{required && <span style={{ color: MAROON, marginLeft: '0.2rem' }}>*</span>}
+                </label>
+                <input
+                  type={type}
+                  required={required}
+                  value={form[key] ?? ''}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  onFocus={() => setFocused(key)}
+                  onBlur={() => setFocused('')}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    border: `2px solid ${focused === key ? MAROON : '#e5e7eb'}`,
+                    borderRadius: '10px',
+                    padding: '0.7rem 1rem',
+                    fontSize: '0.92rem',
+                    outline: 'none',
+                    background: focused === key ? '#fff' : '#f9fafb',
+                    color: '#111',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                />
+              </div>
+            ))}
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{ flex: 1, background: '#f3f4f6', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', cursor: 'pointer', color: '#555', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                style={{ flex: 2, background: saving ? '#d1d5db' : MAROON, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', transition: 'background 0.15s' }}
+                onMouseOver={e => { if (!saving) e.currentTarget.style.background = MAROON_DARK; }}
+                onMouseOut={e => { if (!saving) e.currentTarget.style.background = MAROON; }}
+              >
+                {saving ? 'Saving…' : '✓ Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
