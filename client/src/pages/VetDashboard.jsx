@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 async function authFetch(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
-  return fetch(path, {
+  return fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}`, ...options.headers },
   });
@@ -20,7 +22,7 @@ const MAROON_LIGHT = '#f5e8ea';
 async function fetchTable(table) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`/api/vetdata/${table}`, {
+  const res = await fetch(`${API_BASE}/api/vetdata/${table}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to load ${table}`);

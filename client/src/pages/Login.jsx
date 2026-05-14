@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const MAROON = '#7B1B2E';
 const MAROON_DARK = '#5a1221';
 const MAROON_LIGHT = '#f5e8ea';
@@ -28,7 +30,7 @@ export default function Login() {
 
     // 2. Local system accounts (user_profile)
     try {
-      const res = await fetch('/api/auth/local-login', {
+      const res = await fetch(`${API_BASE}/api/auth/local-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -50,7 +52,7 @@ export default function Login() {
       });
       if (!otpError && otpData?.user) {
         if (!otpData.user.user_metadata?.role) {
-          await fetch('/api/auth/set-owner-role', {
+          await fetch(`${API_BASE}/api/auth/set-owner-role`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email }),
