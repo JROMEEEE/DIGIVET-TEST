@@ -35,7 +35,7 @@ router.get('/mine', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/pets/vaccinations — latest vaccination per pet for the owner
+// GET /api/pets/vaccinations — all vaccine records per pet, grouped
 router.get('/vaccinations', requireAuth, async (req, res) => {
   try {
     const getSupabase = require('../supabase');
@@ -45,7 +45,6 @@ router.get('/vaccinations', requireAuth, async (req, res) => {
     if (!ownerId) ownerId = await resolveOwnerId(req.user, supabase);
     if (!ownerId) return res.json([]);
 
-    // Get owner's pets
     const { data: pets } = await supabase
       .from('pet_table')
       .select('pet_id, pet_name, pet_type')
@@ -56,32 +55,34 @@ router.get('/vaccinations', requireAuth, async (req, res) => {
 
     const petIds = pets.map(p => p.pet_id);
 
-    // Get all vaccinations for these pets (to count doses and find latest)
+    // Get ALL vaccinations for these pets (newest first)
     const { data: vaccines } = await supabase
       .from('vaccine_table')
-      .select('pet_id, vaccine_date, vaccine_details')
+      .select('vaccine_id, pet_id, vaccine_date, vaccine_details, manufacturer_no, is_office_visit')
       .in('pet_id', petIds)
       .is('deleted_at', null)
       .order('vaccine_date', { ascending: false });
 
-    // Group by pet: count doses and find the latest date
-    const vaccMap = new Map();
+    // Group all records by pet_id
+    const vaccByPet = {};
     (vaccines ?? []).forEach(v => {
-      if (!vaccMap.has(v.pet_id)) {
-        vaccMap.set(v.pet_id, { latest: v, count: 1 });
-      } else {
-        vaccMap.get(v.pet_id).count++;
-      }
+      if (!vaccByPet[v.pet_id]) vaccByPet[v.pet_id] = [];
+      vaccByPet[v.pet_id].push(v);
     });
 
-    const result = pets.map(pet => ({
-      pet_id:               pet.pet_id,
-      pet_name:             pet.pet_name,
-      pet_type:             pet.pet_type,
-      last_vaccine_date:    vaccMap.get(pet.pet_id)?.latest.vaccine_date    ?? null,
-      last_vaccine_details: vaccMap.get(pet.pet_id)?.latest.vaccine_details ?? null,
-      total_doses:          vaccMap.get(pet.pet_id)?.count                  ?? 0,
-    }));
+    const result = pets.map(pet => {
+      const records = vaccByPet[pet.pet_id] ?? [];
+      const latest  = records[0] ?? null;
+      return {
+        pet_id:               pet.pet_id,
+        pet_name:             pet.pet_name,
+        pet_type:             pet.pet_type,
+        total_doses:          records.length,
+        last_vaccine_date:    latest?.vaccine_date    ?? null,
+        last_vaccine_details: latest?.vaccine_details ?? null,
+        records,              // all individual vaccine records
+      };
+    });
 
     res.json(result);
   } catch (err) {

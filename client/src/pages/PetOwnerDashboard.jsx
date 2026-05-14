@@ -212,36 +212,9 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
         </div>
       )}
 
-      {/* Vaccination Schedule — all pets */}
+      {/* Vaccination Schedule — dropdown per pet */}
       {vaccinations.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: '2rem' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111', margin: '0 0 1rem' }}>💉 Vaccination Schedule</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {vaccinations.map(v => {
-              const status = getVaccineStatus(v.last_vaccine_date, v.total_doses);
-              const nextDate = v.last_vaccine_date
-                ? (() => { const d = new Date(v.last_vaccine_date); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString(); })()
-                : '—';
-              return (
-                <div key={v.pet_id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: '#fafafa', borderRadius: '8px', border: '1px solid #f0f0f0' }}>
-                  <span style={{ fontSize: '1.2rem' }}>{v.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{v.pet_name}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#777', marginTop: '0.15rem' }}>
-                      {v.last_vaccine_details
-                        ? <span>Last vaccine: <strong>{v.last_vaccine_details}</strong> · Next due: <strong>{nextDate}</strong></span>
-                        : <span style={{ color: '#aaa' }}>No vaccination record</span>
-                      }
-                    </div>
-                  </div>
-                  <span style={{ background: status.bg, color: status.color, borderRadius: '999px', padding: '0.25rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {status.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <VaccinationDropdowns vaccinations={vaccinations} />
       )}
 
 
@@ -276,6 +249,94 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
         <PetList pets={pets} loading={petsLoading} compact />
       </div>
     </>
+  );
+}
+
+// ── Vaccination Dropdown per Pet ──────────────────────────────────────────────
+
+function VaccinationDropdowns({ vaccinations }) {
+  const [open, setOpen] = useState({});
+  const toggle = id => setOpen(o => ({ ...o, [id]: !o[id] }));
+
+  return (
+    <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: '2rem', overflow: 'hidden' }}>
+      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f0f0f0' }}>
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111', margin: 0 }}>💉 Vaccination Records</h2>
+      </div>
+
+      {vaccinations.map((v, i) => {
+        const status   = getVaccineStatus(v.last_vaccine_date, v.total_doses);
+        const isOpen   = open[v.pet_id];
+        const nextDate = v.last_vaccine_date
+          ? (() => { const d = new Date(v.last_vaccine_date); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString(); })()
+          : null;
+
+        return (
+          <div key={v.pet_id} style={{ borderBottom: i < vaccinations.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
+            {/* Pet header row */}
+            <div
+              onClick={() => toggle(v.pet_id)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.5rem', cursor: 'pointer', background: isOpen ? '#fafafa' : '#fff', transition: 'background 0.15s' }}
+              onMouseOver={e => { if (!isOpen) e.currentTarget.style.background = '#fafafa'; }}
+              onMouseOut={e => { if (!isOpen) e.currentTarget.style.background = '#fff'; }}
+            >
+              <span style={{ color: '#aaa', fontSize: '0.85rem' }}>{isOpen ? '▾' : '▸'}</span>
+              <span style={{ fontSize: '1.2rem' }}>{v.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 700, color: '#111', fontSize: '0.92rem' }}>{v.pet_name}</span>
+                <span style={{ color: '#aaa', fontSize: '0.78rem', marginLeft: '0.75rem' }}>
+                  {v.total_doses} dose{v.total_doses !== 1 ? 's' : ''} recorded
+                </span>
+              </div>
+              {nextDate && (
+                <div style={{ textAlign: 'right', marginRight: '0.75rem' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Next Due</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#333' }}>{nextDate}</div>
+                </div>
+              )}
+              <span style={{ background: status.bg, color: status.color, borderRadius: '999px', padding: '0.25rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {status.days < 0 ? '🚨 ' : status.days !== null && status.days <= 30 ? '⚠️ ' : ''}{status.label}
+              </span>
+            </div>
+
+            {/* Expanded records table */}
+            {isOpen && (
+              <div style={{ borderTop: '1px solid #f0f0f0', background: '#fafafa' }}>
+                {!v.records?.length ? (
+                  <p style={{ color: '#aaa', fontSize: '0.85rem', padding: '0.75rem 1.5rem 0.75rem 3.5rem', margin: 0 }}>No vaccination records found.</p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        {['Date', 'Vaccine', 'Manufacturer No.', 'Type'].map(h => (
+                          <th key={h} style={{ padding: '0.6rem 1.25rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {v.records.map((rec, ri) => (
+                        <tr key={rec.vaccine_id ?? ri} style={{ borderBottom: ri < v.records.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                          <td style={{ padding: '0.7rem 1.25rem', fontWeight: 600, color: '#333' }}>
+                            {rec.vaccine_date ? new Date(rec.vaccine_date).toLocaleDateString() : '—'}
+                          </td>
+                          <td style={{ padding: '0.7rem 1.25rem' }}>
+                            <span style={{ background: MAROON_LIGHT, color: MAROON, borderRadius: '4px', padding: '0.15rem 0.5rem', fontSize: '0.8rem', fontWeight: 600 }}>
+                              💉 {rec.vaccine_details || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.7rem 1.25rem', color: '#777' }}>{rec.manufacturer_no || '—'}</td>
+                          <td style={{ padding: '0.7rem 1.25rem', color: '#777' }}>{rec.is_office_visit ? 'Office Visit' : 'Barangay Drive'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
