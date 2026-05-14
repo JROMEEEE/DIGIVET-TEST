@@ -628,16 +628,29 @@ useEffect(() => {
     (refs.barangayMap[r.barangay_id] ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
-  async function sendCredentials(owner) {
+  async function sendCredentials(owner, force = false) {
     setSending(s => ({ ...s, [owner.owner_id]: 'sending' }));
     try {
-      const res = await authFetch('/api/auth/send-owner-credentials', {
+      const res  = await authFetch('/api/auth/send-owner-credentials', {
         method: 'POST',
-        body: JSON.stringify({ owner_id: owner.owner_id }),
+        body: JSON.stringify({ owner_id: owner.owner_id, force }),
       });
       const data = await res.json();
-      setSending(s => ({ ...s, [owner.owner_id]: res.ok ? 'sent' : 'error' }));
-      if (!res.ok) alert(data.error || 'Failed to send credentials');
+      if (!res.ok) {
+        // Already sent — ask for confirmation before resending
+        if (data.alreadySent) {
+          setSending(s => ({ ...s, [owner.owner_id]: null }));
+          const ok = window.confirm(
+            `Credentials were already sent to ${owner.owner_name}.\n\nSend new credentials again? This will generate a new password and overwrite the old one.`
+          );
+          if (ok) sendCredentials(owner, true);
+          return;
+        }
+        setSending(s => ({ ...s, [owner.owner_id]: 'error' }));
+        alert(data.error || 'Failed to send credentials');
+      } else {
+        setSending(s => ({ ...s, [owner.owner_id]: 'sent' }));
+      }
     } catch {
       setSending(s => ({ ...s, [owner.owner_id]: 'error' }));
     }
@@ -714,8 +727,8 @@ useEffect(() => {
                     <td style={{ padding: '0.9rem 1.25rem', color: '#555' }}>{r.email || <span style={{ color: '#ccc' }}>No email</span>}</td>
                     <td style={{ padding: '0.9rem 1.25rem', color: '#555' }}>{refs.barangayMap[r.barangay_id] ?? `Brgy #${r.barangay_id}`}</td>
                     <td style={{ padding: '0.9rem 1.25rem' }}>
-                      {state === 'sent'
-                        ? <span style={{ color: '#16a34a', fontSize: '0.8rem', fontWeight: 600 }}>✓ Sent</span>
+                      {(state === 'sent' || r.credentials_sent) && state !== 'sending'
+                        ? <span style={{ color: '#16a34a', fontSize: '0.8rem', fontWeight: 600 }}>✓ Already Sent</span>
                         : state === 'error'
                         ? <span style={{ color: '#dc2626', fontSize: '0.8rem', fontWeight: 600 }}>✗ Failed</span>
                         : null}
@@ -724,17 +737,18 @@ useEffect(() => {
                       {r.email ? (
                         <button
                           onClick={() => sendCredentials(r)}
-                          disabled={state === 'sending' || state === 'sent'}
+                          disabled={state === 'sending'}
                           style={{
-                            background: state === 'sent' ? '#dcfce7' : MAROON_LIGHT,
-                            border: `1px solid ${state === 'sent' ? '#86efac' : MAROON}30`,
-                            color: state === 'sent' ? '#166534' : MAROON,
+                            background: (r.credentials_sent || state === 'sent') ? '#dcfce7' : MAROON_LIGHT,
+                            border: `1px solid ${(r.credentials_sent || state === 'sent') ? '#86efac' : MAROON}30`,
+                            color: (r.credentials_sent || state === 'sent') ? '#166534' : MAROON,
                             borderRadius: '6px', padding: '0.4rem 0.9rem',
-                            fontSize: '0.8rem', fontWeight: 700, cursor: state === 'sending' || state === 'sent' ? 'not-allowed' : 'pointer',
+                            fontSize: '0.8rem', fontWeight: 700,
+                            cursor: state === 'sending' ? 'not-allowed' : 'pointer',
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {state === 'sending' ? 'Sending…' : state === 'sent' ? 'Sent ✓' : 'Send Credentials'}
+                          {state === 'sending' ? 'Sending…' : (r.credentials_sent || state === 'sent') ? 'Resend ↻' : 'Send Credentials'}
                         </button>
                       ) : (
                         <span style={{ color: '#ccc', fontSize: '0.8rem' }}>No email</span>

@@ -286,16 +286,25 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     const getSupabase = require('../supabase');
     const supabase = getSupabase();
 
-    // Get owner details from Supabase owner_table
+    // Get owner details including credentials_sent status
     const { data: owner, error: ownerErr } = await supabase
       .from('owner_table')
-      .select('owner_id, owner_name, email')
+      .select('owner_id, owner_name, email, credentials_sent')
       .eq('owner_id', owner_id)
       .is('deleted_at', null)
       .maybeSingle();
 
     if (ownerErr || !owner) return res.status(404).json({ error: 'Owner not found' });
     if (!owner.email)       return res.status(400).json({ error: 'This owner has no email address on record' });
+
+    // Block resending unless explicitly forced
+    const { force } = req.body;
+    if (owner.credentials_sent && !force) {
+      return res.status(409).json({
+        error: 'Credentials already sent to this owner.',
+        alreadySent: true,
+      });
+    }
 
     // Generate a secure readable password
     const { generatePassword } = require('./authHelpers');
