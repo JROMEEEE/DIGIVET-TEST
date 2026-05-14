@@ -598,6 +598,7 @@ function OwnersTab({ refs }) {
   const [provisioning, setProvision]    = useState(false);
   const [provisionMsg, setProvisionMsg] = useState('');
   const [showConfirm, setShowConfirm]   = useState(false);
+  const [resendTarget, setResendTarget] = useState(null); // owner to resend to
   const { editing, setEditing, deleting, setDeleting, saveEdit, confirmDelete } = useEditDelete('owner_table', 'owner_id');
   const [credStatus, setCredStatus] = useState(null);
 
@@ -642,17 +643,13 @@ useEffect(() => {
       });
       const data = await res.json();
       if (!res.ok) {
-        // Already sent — ask for confirmation before resending
         if (data.alreadySent) {
+          // Show styled modal instead of window.confirm
           setSending(s => ({ ...s, [owner.owner_id]: null }));
-          const ok = window.confirm(
-            `Credentials were already sent to ${owner.owner_name}.\n\nSend new credentials again? This will generate a new password and overwrite the old one.`
-          );
-          if (ok) sendCredentials(owner, true);
+          setResendTarget(owner);
           return;
         }
         setSending(s => ({ ...s, [owner.owner_id]: 'error' }));
-        alert(data.error || 'Failed to send credentials');
       } else {
         setSending(s => ({ ...s, [owner.owner_id]: 'sent' }));
       }
@@ -678,7 +675,7 @@ useEffect(() => {
             cursor: provisioning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
             opacity: provisioning ? 0.7 : 1,
           }}>
-            {provisioning ? 'Sending…' : '📧 Send All Credentials'}
+            {provisioning ? 'Sending…' : (() => { const u = filtered.filter(r => r.email && !r.credentials_sent).length; return u > 0 ?  : '📧 All Credentials Sent'; })()}
           </button>
         </div>
       </div>
@@ -774,20 +771,51 @@ useEffect(() => {
       {editing  && <GenericEditModal title="Owner" fields={[{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }]} initialValues={editing} onSave={saveEdit} onClose={() => setEditing(null)} />}
       {deleting && <DeleteConfirm name={deleting.owner_name} onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />}
 
-      {showConfirm && (
+      {showConfirm && (() => {
+        const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
+        return unsent > 0 ? (
+          <ConfirmModal
+            icon="📧"
+            title={`Send to ${unsent} Unsent Owner${unsent !== 1 ? 's' : ''}`}
+            confirmColor={MAROON}
+            confirmLabel={`Send Credentials to ${unsent} Owner${unsent !== 1 ? 's' : ''}`}
+            message={`New passwords will be generated and emailed to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received login credentials.`}
+            onConfirm={doProvision}
+            onCancel={() => setShowConfirm(false)}
+          />
+        ) : (
+          // All sent — show info only, no confirm button
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+            onClick={() => setShowConfirm(false)}
+          >
+            <div style={{ background: '#fff', borderRadius: '18px', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+              <div style={{ background: '#16a34a', padding: '1.5rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.2rem', marginBottom: '0.4rem' }}>✅</div>
+                <h2 style={{ color: '#fff', fontWeight: 800, margin: 0, fontSize: '1.05rem' }}>All Credentials Sent</h2>
+              </div>
+              <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+                <p style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.7, margin: '0 0 1.5rem' }}>
+                  All owners with registered email addresses have already received their login credentials. There are no pending owners to send to.
+                </p>
+                <button onClick={() => setShowConfirm(false)}
+                  style={{ background: MAROON, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem 2rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer' }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {resendTarget && (
         <ConfirmModal
-          icon="📧"
-          title="Send Credentials"
-          confirmColor={MAROON}
-          confirmLabel="Yes, Send Credentials"
-          message={(() => {
-            const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
-            return unsent > 0
-              ? `This will send login credentials to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received them.\n\nNew passwords will be generated and emailed to each owner.`
-              : `All owners with emails have already received their credentials.\n\nNo new emails will be sent.`;
-          })()}
-          onConfirm={doProvision}
-          onCancel={() => setShowConfirm(false)}
+          icon="🔄"
+          title="Resend Credentials"
+          confirmColor="#d97706"
+          confirmLabel="Yes, Resend New Credentials"
+          message={`Credentials were already sent to ${resendTarget.owner_name}.\n\nSending again will generate a NEW password and email it. Their old password will no longer work.`}
+          onConfirm={async () => { setResendTarget(null); await sendCredentials(resendTarget, true); }}
+          onCancel={() => setResendTarget(null)}
         />
       )}
     </>
