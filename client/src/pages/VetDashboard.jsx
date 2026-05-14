@@ -1112,11 +1112,75 @@ function VeterinariansTab() {
 
 // ── Pending Approvals Tab ─────────────────────────────────────────────────────
 
+// Defined OUTSIDE PendingApprovalsTab — prevents remount on every keystroke
+function RequestCard({ req, refs, note, setNote, acting, review }) {
+  const petName = refs.petMap?.[req.pet_id] ?? `Pet #${req.pet_id}`;
+  const state   = acting[req.request_id];
+  const isDone  = state === 'done' || req.status !== 'pending';
+
+  return (
+    <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', padding: '1.25rem 1.5rem', marginBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+        <div>
+          <span style={{ fontWeight: 700, color: '#111', fontSize: '0.95rem' }}>{petName}</span>
+          <span style={{ color: '#aaa', fontSize: '0.8rem', marginLeft: '0.75rem' }}>
+            Requested {new Date(req.created_at).toLocaleDateString()}
+          </span>
+        </div>
+        {req.status === 'pending' && !isDone && <span style={{ background: '#fef9c3', color: '#7a5800', border: '1px solid #f0d080', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>⏳ Pending</span>}
+        {req.status === 'approved' && <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>✓ Approved</span>}
+        {req.status === 'rejected' && <span style={{ background: '#fff5f5', color: '#dc2626', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>✗ Rejected</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ background: '#fafafa', borderRadius: '8px', padding: '0.85rem 1rem' }}>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.73rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Current Data</p>
+          {[['Name', refs.petMap?.[req.pet_id] ?? '—'], ['Type', '—'], ['Color', '—'], ['Age', '—']].map(([label, val]) => (
+            <p key={label} style={{ margin: '3px 0', fontSize: '0.84rem', color: '#555' }}><strong style={{ color: '#888' }}>{label}:</strong> {val}</p>
+          ))}
+        </div>
+        <div style={{ background: MAROON_LIGHT, borderRadius: '8px', padding: '0.85rem 1rem', border: `1px solid ${MAROON}20` }}>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.73rem', fontWeight: 700, color: MAROON, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Requested Changes</p>
+          {[['Name', req.pet_name], ['Type', req.pet_type], ['Color', req.pet_color], ['Age', req.pet_age]].map(([label, val]) => (
+            <p key={label} style={{ margin: '3px 0', fontSize: '0.84rem', color: '#333', fontWeight: val ? 600 : 400 }}><strong style={{ color: '#888' }}>{label}:</strong> {val || '—'}</p>
+          ))}
+        </div>
+      </div>
+
+      {req.status === 'pending' && !isDone && (
+        <>
+          <textarea
+            rows={2}
+            value={note[req.request_id] ?? ''}
+            onChange={e => setNote(n => ({ ...n, [req.request_id]: e.target.value }))}
+            placeholder="Optional note to the pet owner…"
+            style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.85rem', outline: 'none', marginBottom: '0.75rem', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+          />
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            <button disabled={!!state} onClick={() => review(req.request_id, 'rejected')}
+              style={{ flex: 1, background: state ? '#f5f5f5' : '#fff5f5', border: '1.5px solid #fca5a5', color: '#dc2626', borderRadius: '8px', padding: '0.65rem', fontWeight: 700, fontSize: '0.88rem', cursor: state ? 'not-allowed' : 'pointer' }}>
+              {state === 'rejecting' ? 'Rejecting…' : '✗ Reject'}
+            </button>
+            <button disabled={!!state} onClick={() => review(req.request_id, 'approved')}
+              style={{ flex: 2, background: state ? '#b0b0b0' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.65rem', fontWeight: 700, fontSize: '0.88rem', cursor: state ? 'not-allowed' : 'pointer' }}>
+              {state === 'approving' ? 'Approving…' : state === 'done' ? '✓ Approved!' : '✓ Approve'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {req.reviewer_note && (
+        <p style={{ margin: '0.75rem 0 0', fontSize: '0.82rem', color: '#777', fontStyle: 'italic' }}>Note: {req.reviewer_note}</p>
+      )}
+    </div>
+  );
+}
+
 function PendingApprovalsTab({ refs, onReviewed }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading]   = useState(true);
-  const [note, setNote]         = useState({});     // request_id → reviewer note
-  const [acting, setActing]     = useState({});     // request_id → 'approving'|'rejecting'|'done'|'error'
+  const [note, setNote]         = useState({});
+  const [acting, setActing]     = useState({});
 
   useEffect(() => {
     authFetch('/api/pets/all-requests')
@@ -1147,86 +1211,6 @@ function PendingApprovalsTab({ refs, onReviewed }) {
     }
   }
 
-  function RequestCard({ req }) {
-    const petName  = refs.petMap?.[req.pet_id]  ?? `Pet #${req.pet_id}`;
-    const state    = acting[req.request_id];
-    const isDone   = state === 'done' || req.status !== 'pending';
-
-    return (
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', padding: '1.25rem 1.5rem', marginBottom: '0.75rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-          <div>
-            <span style={{ fontWeight: 700, color: '#111', fontSize: '0.95rem' }}>{petName}</span>
-            <span style={{ color: '#aaa', fontSize: '0.8rem', marginLeft: '0.75rem' }}>
-              Requested {new Date(req.created_at).toLocaleDateString()}
-            </span>
-          </div>
-          {req.status === 'pending' && !isDone && (
-            <span style={{ background: '#fef9c3', color: '#7a5800', border: '1px solid #f0d080', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>
-              ⏳ Pending
-            </span>
-          )}
-          {(req.status === 'approved' || state === 'done' && acting[req.request_id] === 'approving') && (
-            <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>✓ Approved</span>
-          )}
-          {req.status === 'rejected' && (
-            <span style={{ background: '#fff5f5', color: '#dc2626', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.75rem' }}>✗ Rejected</span>
-          )}
-        </div>
-
-        {/* Current vs Proposed comparison */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-          <div style={{ background: '#fafafa', borderRadius: '8px', padding: '0.85rem 1rem' }}>
-            <p style={{ margin: '0 0 0.5rem', fontSize: '0.73rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Current Data</p>
-            {[['Name', refs.petMap?.[req.pet_id] ?? '—'], ['Type', '—'], ['Color', '—'], ['Age', '—']].map(([label, val]) => (
-              <p key={label} style={{ margin: '3px 0', fontSize: '0.84rem', color: '#555' }}><strong style={{ color: '#888' }}>{label}:</strong> {val}</p>
-            ))}
-          </div>
-          <div style={{ background: MAROON_LIGHT, borderRadius: '8px', padding: '0.85rem 1rem', border: `1px solid ${MAROON}20` }}>
-            <p style={{ margin: '0 0 0.5rem', fontSize: '0.73rem', fontWeight: 700, color: MAROON, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Requested Changes</p>
-            {[['Name', req.pet_name], ['Type', req.pet_type], ['Color', req.pet_color], ['Age', req.pet_age]].map(([label, val]) => (
-              <p key={label} style={{ margin: '3px 0', fontSize: '0.84rem', color: '#333', fontWeight: val ? 600 : 400 }}><strong style={{ color: '#888' }}>{label}:</strong> {val || '—'}</p>
-            ))}
-          </div>
-        </div>
-
-        {/* Reviewer note input + action buttons (only for pending) */}
-        {req.status === 'pending' && !isDone && (
-          <>
-            <input
-              value={note[req.request_id] ?? ''}
-              onChange={e => setNote(n => ({ ...n, [req.request_id]: e.target.value }))}
-              placeholder="Optional note to the pet owner…"
-              style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', marginBottom: '0.75rem' }}
-            />
-            <div style={{ display: 'flex', gap: '0.6rem' }}>
-              <button
-                disabled={!!state}
-                onClick={() => review(req.request_id, 'rejected')}
-                style={{ flex: 1, background: state ? '#f5f5f5' : '#fff5f5', border: '1.5px solid #fca5a5', color: '#dc2626', borderRadius: '8px', padding: '0.65rem', fontWeight: 700, fontSize: '0.88rem', cursor: state ? 'not-allowed' : 'pointer' }}
-              >
-                {state === 'rejecting' ? 'Rejecting…' : '✗ Reject'}
-              </button>
-              <button
-                disabled={!!state}
-                onClick={() => review(req.request_id, 'approved')}
-                style={{ flex: 2, background: state ? '#b0b0b0' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.65rem', fontWeight: 700, fontSize: '0.88rem', cursor: state ? 'not-allowed' : 'pointer' }}
-              >
-                {state === 'approving' ? 'Approving…' : state === 'done' ? '✓ Approved!' : '✓ Approve'}
-              </button>
-            </div>
-          </>
-        )}
-
-        {req.reviewer_note && (
-          <p style={{ margin: '0.75rem 0 0', fontSize: '0.82rem', color: '#777', fontStyle: 'italic' }}>
-            Note: {req.reviewer_note}
-          </p>
-        )}
-      </div>
-    );
-  }
-
   return (
     <>
       <div style={{ marginBottom: '2rem' }}>
@@ -1251,7 +1235,7 @@ function PendingApprovalsTab({ refs, onReviewed }) {
               <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#111', margin: '0 0 1rem' }}>
                 Pending — {pending.length} request{pending.length !== 1 ? 's' : ''}
               </h2>
-              {pending.map(req => <RequestCard key={req.request_id} req={req} />)}
+              {pending.map(req => <RequestCard key={req.request_id} req={req} refs={refs} note={note} setNote={setNote} acting={acting} review={review} />)}
             </div>
           )}
 
@@ -1260,7 +1244,7 @@ function PendingApprovalsTab({ refs, onReviewed }) {
               <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#aaa', margin: '0 0 1rem' }}>
                 Reviewed — {reviewed.length} request{reviewed.length !== 1 ? 's' : ''}
               </h2>
-              {reviewed.map(req => <RequestCard key={req.request_id} req={req} />)}
+              {reviewed.map(req => <RequestCard key={req.request_id} req={req} refs={refs} note={note} setNote={setNote} acting={acting} review={review} />)}
             </div>
           )}
         </>
