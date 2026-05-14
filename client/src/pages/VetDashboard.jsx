@@ -98,7 +98,7 @@ export default function VetDashboard() {
     const load = () =>
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (!session) return;
-        fetch('/api/pets/all-requests', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        authFetch('/api/pets/all-requests')
           .then(r => r.json())
           .then(data => setPendingCount((data ?? []).filter(r => r.status === 'pending').length))
           .catch(() => {});
@@ -1010,12 +1010,10 @@ function PendingApprovalsTab({ refs, onReviewed }) {
   const [acting, setActing]     = useState({});     // request_id → 'approving'|'rejecting'|'done'|'error'
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      fetch('/api/pets/all-requests', { headers: { Authorization: `Bearer ${session?.access_token}` } })
-        .then(r => r.json())
-        .then(data => { setRequests(data ?? []); setLoading(false); })
-        .catch(() => setLoading(false));
-    });
+    authFetch('/api/pets/all-requests')
+      .then(r => r.json())
+      .then(data => { setRequests(data ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
   const pending  = requests.filter(r => r.status === 'pending');
@@ -1024,10 +1022,8 @@ function PendingApprovalsTab({ refs, onReviewed }) {
   async function review(requestId, action) {
     setActing(a => ({ ...a, [requestId]: action === 'approved' ? 'approving' : 'rejecting' }));
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/pets/review-request', {
+      const res = await authFetch('/api/pets/review-request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({ request_id: requestId, action, reviewer_note: note[requestId] ?? '' }),
       });
       if (res.ok) {
