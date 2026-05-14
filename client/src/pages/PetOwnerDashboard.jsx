@@ -95,6 +95,7 @@ export default function PetOwnerDashboard() {
   const navItems = [
     { id: 'overview', icon: '⊞', label: 'Overview' },
     { id: 'records',  icon: '📋', label: 'Records' },
+    { id: 'myqr',     icon: '⬛', label: 'My QR Code' },
   ];
 
   return (
@@ -160,6 +161,9 @@ export default function PetOwnerDashboard() {
         )}
         {activeTab === 'records' && (
           <Records pets={pets} petsLoading={petsLoading} onPetUpdated={() => { loadPets(); loadEditRequests(); }} vaccinations={vaccinations} editRequests={editRequests} />
+        )}
+        {activeTab === 'myqr' && (
+          <MyQrCode user={user} fullName={fullName} pets={pets} vaccinations={vaccinations} onRefresh={() => { loadPets(); loadVaccinations(); }} />
         )}
       </main>
     </div>
@@ -711,6 +715,162 @@ function EditPetModal({ pet, pendingRequest, onClose, onSaved }) {
   );
 }
 
+
+// ── My QR Code ────────────────────────────────────────────────────────────────
+
+function MyQrCode({ user, fullName, pets, vaccinations, onRefresh }) {
+  const { QRCodeSVG } = require('qrcode.react');
+  const [generated, setGenerated] = useState(null); // { payload, timestamp }
+  const [tooLarge, setTooLarge]   = useState(false);
+
+  // Build the QR payload from current owner + pet + vaccination data
+  function buildPayload() {
+    const vaccMap = Object.fromEntries(vaccinations.map(v => [v.pet_id, v]));
+
+    const payload = {
+      type:    'DIGIVET_OWNER',
+      owner:   { name: fullName, email: user?.email ?? '' },
+      pets:    pets.map(p => {
+        const v = vaccMap[p.pet_id];
+        return {
+          name:            p.pet_name,
+          type:            p.pet_type,
+          color:           p.pet_color,
+          age:             p.pet_age,
+          last_vaccine:    v?.last_vaccine_details ?? null,
+          last_vacc_date:  v?.last_vaccine_date    ?? null,
+          doses:           v?.total_doses          ?? 0,
+        };
+      }),
+      generated_at: new Date().toISOString(),
+    };
+
+    const json = JSON.stringify(payload);
+    if (json.length > 2900) { setTooLarge(true); return null; }
+    setTooLarge(false);
+    return { payload: json, timestamp: new Date().toLocaleString() };
+  }
+
+  function generate() {
+    const result = buildPayload();
+    if (result) setGenerated(result);
+  }
+
+  // Auto-generate on first load when data is available
+  useEffect(() => {
+    if (pets.length > 0 && !generated) generate();
+  }, [pets.length, vaccinations.length]);
+
+  function downloadQr() {
+    const svg = document.getElementById('owner-data-qr');
+    if (!svg) return;
+    const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `digivet-${fullName.replace(/\s+/g, '-').toLowerCase()}-qr.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <>
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>⬛ My QR Code</h1>
+        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>
+          Your personal QR code contains all your pet records. Scan it at the Veterinary Office for quick access.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', maxWidth: 760 }}>
+
+        {/* QR display card */}
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '2rem', border: '1px solid #eee', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          {tooLarge ? (
+            <div style={{ textAlign: 'center', padding: '1rem' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚠️</div>
+              <p style={{ color: '#dc2626', fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem' }}>Too much data for one QR</p>
+              <p style={{ color: '#777', fontSize: '0.8rem', margin: 0 }}>You have too many pets/vaccinations. Contact the Veterinary Office for a printed card.</p>
+            </div>
+          ) : generated ? (
+            <>
+              <QRCodeSVG
+                id="owner-data-qr"
+                value={generated.payload}
+                size={200}
+                fgColor={MAROON}
+                bgColor="#ffffff"
+                level="M"
+              />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{fullName}</div>
+                <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.2rem' }}>Pet Owner · DIGIVET</div>
+                <div style={{ color: '#bbb', fontSize: '0.72rem', marginTop: '0.3rem' }}>Generated {generated.timestamp}</div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.6rem', width: '100%' }}>
+                <button onClick={downloadQr} style={{ flex: 1, background: MAROON, color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                  Download
+                </button>
+                <button onClick={() => { onRefresh(); setTimeout(generate, 800); }} style={{ flex: 1, background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '8px', padding: '0.6rem', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                  Regenerate
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '1rem' }}>
+              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>Loading your data…</p>
+            </div>
+          )}
+        </div>
+
+        {/* Data preview card */}
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '1.5rem', border: '1px solid #eee', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <h3 style={{ fontWeight: 700, color: '#111', margin: '0 0 1rem', fontSize: '0.92rem' }}>Data included in QR</h3>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '0.4rem' }}>Owner</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111' }}>{fullName}</div>
+            <div style={{ fontSize: '0.8rem', color: '#777' }}>{user?.email}</div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#aaa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '0.5rem' }}>
+              Pets ({pets.length})
+            </div>
+            {pets.length === 0 ? (
+              <p style={{ color: '#ccc', fontSize: '0.82rem', margin: 0 }}>No pets on record yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {pets.map(pet => {
+                  const vacc = vaccinations.find(v => v.pet_id === pet.pet_id);
+                  return (
+                    <div key={pet.pet_id} style={{ background: '#fafafa', borderRadius: '8px', padding: '0.6rem 0.85rem', border: '1px solid #f0f0f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '1rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+                        <span style={{ fontWeight: 600, color: '#222', fontSize: '0.85rem' }}>{pet.pet_name}</span>
+                        <span style={{ color: '#999', fontSize: '0.77rem', marginLeft: '0.25rem' }}>{[pet.pet_type, pet.pet_color].filter(Boolean).join(' · ')}</span>
+                      </div>
+                      {vacc?.last_vaccine_details && (
+                        <div style={{ fontSize: '0.75rem', color: '#777', marginTop: '0.25rem', paddingLeft: '1.5rem' }}>
+                          💉 Last: {vacc.last_vaccine_details}
+                          {vacc.last_vaccine_date ? ` (${new Date(vacc.last_vaccine_date).toLocaleDateString()})` : ''}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '1rem', padding: '0.75rem', background: MAROON_LIGHT, borderRadius: '8px', fontSize: '0.78rem', color: MAROON, lineHeight: 1.6 }}>
+            Click <strong>Regenerate</strong> after adding new pets to update the QR with the latest information.
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 const labelStyle = { display: 'block', fontSize: '0.83rem', fontWeight: 600, color: '#444', marginBottom: '0.4rem' };
 const inputStyle = { width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none', background: '#fafafa' };
