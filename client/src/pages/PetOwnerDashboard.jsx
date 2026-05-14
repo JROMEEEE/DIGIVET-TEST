@@ -184,7 +184,7 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
         </p>
       </div>
 
-      {/* Vaccination Reminder Banner */}
+      {/* Vaccination Reminders — urgent alerts */}
       {urgent.length > 0 && (
         <div style={{ marginBottom: '1.5rem' }}>
           {urgent.map(v => {
@@ -197,24 +197,50 @@ function Overview({ pets, petsLoading, fullName, setActiveTab, vaccinations }) {
               }}>
                 <span style={{ fontSize: '1.3rem' }}>{status.days < 0 ? '🚨' : '⚠️'}</span>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 700, color: status.color, fontSize: '0.9rem' }}>
-                    {v.pet_name}
-                  </span>
-                  <span style={{ color: status.color, fontSize: '0.88rem' }}>
-                    {' '}— Vaccination {status.label}
-                    {v.last_vaccine_details ? ` (Last: ${v.last_vaccine_details})` : ''}
-                  </span>
+                  <span style={{ fontWeight: 700, color: status.color, fontSize: '0.9rem' }}>{v.pet_name}</span>
+                  <span style={{ color: status.color, fontSize: '0.88rem' }}>{' '}— {status.label}</span>
+                  {v.last_vaccine_details && (
+                    <span style={{ color: status.color, fontSize: '0.82rem' }}>{' '}· Last: {v.last_vaccine_details}</span>
+                  )}
                 </div>
-                <button onClick={() => setActiveTab('records')} style={{
-                  background: 'rgba(0,0,0,0.1)', border: 'none', borderRadius: '6px',
-                  padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
-                  cursor: 'pointer', color: status.color, whiteSpace: 'nowrap',
-                }}>
+                <button onClick={() => setActiveTab('records')} style={{ background: 'rgba(0,0,0,0.1)', border: 'none', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', color: status.color, whiteSpace: 'nowrap' }}>
                   View Records
                 </button>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Vaccination Schedule — all pets */}
+      {vaccinations.length > 0 && (
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: '2rem' }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111', margin: '0 0 1rem' }}>💉 Vaccination Schedule</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {vaccinations.map(v => {
+              const status = getVaccineStatus(v.last_vaccine_date, v.total_doses);
+              const nextDate = v.last_vaccine_date
+                ? (() => { const d = new Date(v.last_vaccine_date); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString(); })()
+                : '—';
+              return (
+                <div key={v.pet_id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: '#fafafa', borderRadius: '8px', border: '1px solid #f0f0f0' }}>
+                  <span style={{ fontSize: '1.2rem' }}>{v.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{v.pet_name}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#777', marginTop: '0.15rem' }}>
+                      {v.last_vaccine_details
+                        ? <span>Last vaccine: <strong>{v.last_vaccine_details}</strong> · Next due: <strong>{nextDate}</strong></span>
+                        : <span style={{ color: '#aaa' }}>No vaccination record</span>
+                      }
+                    </div>
+                  </div>
+                  <span style={{ background: status.bg, color: status.color, borderRadius: '999px', padding: '0.25rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {status.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -348,14 +374,25 @@ function PetList({ pets, loading, onEdit, compact = false, vaccMap = {}, pending
               {(() => {
                 const vacc = vaccMap[pet.pet_id];
                 const status = getVaccineStatus(vacc?.last_vaccine_date, vacc?.total_doses);
+                const nextDate = vacc?.last_vaccine_date
+                  ? (() => { const d = new Date(vacc.last_vaccine_date); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString(); })()
+                  : null;
                 return (
-                  <span style={{
-                    background: status.bg, color: status.color,
-                    borderRadius: '999px', padding: '0.25rem 0.75rem',
-                    fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap',
-                  }}>
-                    {status.days < 0 ? '🚨 ' : status.days !== null && status.days <= 30 ? '⚠️ ' : '✓ '}{status.label}
-                  </span>
+                  <div>
+                    {vacc?.last_vaccine_details && (
+                      <div style={{ fontSize: '0.8rem', color: '#555', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        💉 {vacc.last_vaccine_details}
+                      </div>
+                    )}
+                    <span style={{ background: status.bg, color: status.color, borderRadius: '999px', padding: '0.25rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {status.days < 0 ? '🚨 ' : status.days !== null && status.days <= 30 ? '⚠️ ' : '✓ '}{status.label}
+                    </span>
+                    {nextDate && (
+                      <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.3rem' }}>
+                        Next: {nextDate}
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
             </td>
