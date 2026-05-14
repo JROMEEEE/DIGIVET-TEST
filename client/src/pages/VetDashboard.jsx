@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import useSessionTimeout from '../hooks/useSessionTimeout';
+import SessionWarning from '../components/SessionWarning';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -71,6 +73,8 @@ export default function VetDashboard() {
     await logout();
     navigate('/', { replace: true });
   }
+ 
+  const { showWarning, secondsLeft, stayLoggedIn } = useSessionTimeout(handleLogout);
 
   const [pendingCount, setPendingCount]   = useState(0);
   const [syncing, setSyncing]             = useState(false);
@@ -185,6 +189,7 @@ export default function VetDashboard() {
             Sign out
           </button>
           {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
+      {showWarning && <SessionWarning secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={handleLogout} />}
         </div>
       </aside>
 

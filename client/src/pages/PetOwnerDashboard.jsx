@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import useSessionTimeout from '../hooks/useSessionTimeout';
+import SessionWarning from '../components/SessionWarning';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -94,6 +96,7 @@ export default function PetOwnerDashboard() {
     await logout();
     navigate('/', { replace: true });
   }
+  const { showWarning, secondsLeft, stayLoggedIn } = useSessionTimeout(handleLogout);
 
   const navItems = [
     { id: 'overview', icon: '⊞', label: 'Overview' },
@@ -163,6 +166,7 @@ export default function PetOwnerDashboard() {
         </div>
       </aside>
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
+      {showWarning && <SessionWarning secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={handleLogout} />}
 
       {/* Main */}
       <main style={{ marginLeft: 230, flex: 1, padding: '2rem 2.5rem', minHeight: '100vh' }}>
