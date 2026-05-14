@@ -610,10 +610,8 @@ useEffect(() => {
   async function runProvision() {
     const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
     const msg = unsent > 0
-      ? 'Send credentials to ' + unsent + ' owner' + (unsent !== 1 ? 's' : '') + ' who have not yet received them?
-This will generate new passwords and email them to each owner.'
-      : 'All owners with emails have already received their credentials.
-No new emails will be sent.';
+      ? `Send credentials to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received them?\n\nThis will generate new passwords and email them to each owner.`
+      : `All owners with emails have already received their credentials.\n\nNo new emails will be sent.`;
     if (!window.confirm(msg)) return;
 
     setProvision(true);
