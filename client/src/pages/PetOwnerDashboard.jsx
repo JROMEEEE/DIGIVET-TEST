@@ -756,9 +756,9 @@ function MyQrCode({ user, fullName, pets, vaccinations, onRefresh }) {
     if (result) setGenerated(result);
   }
 
-  // Auto-generate on first load when data is available
+  // Auto-regenerate whenever pets or vaccination data changes
   useEffect(() => {
-    if (pets.length > 0 && !generated) generate();
+    if (pets.length > 0) generate();
   }, [pets.length, vaccinations.length]);
 
   function downloadQr() {
