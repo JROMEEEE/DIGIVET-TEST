@@ -608,18 +608,26 @@ useEffect(() => {
 
 
   async function runProvision() {
-  setProvision(true);
-  setProvisionMsg('');
-  try {
-    const res  = await authFetch('/api/credentials/send-now', { method: 'POST' });
-    const data = await res.json();
-    setProvisionMsg('✓ Provisioning running in background — credentials will be sent shortly');
-  } catch {
-    setProvisionMsg('✗ Failed to start provisioning');
-  } finally {
-    setProvision(false);
+    const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
+    const msg = unsent > 0
+      ? 'Send credentials to ' + unsent + ' owner' + (unsent !== 1 ? 's' : '') + ' who have not yet received them?
+This will generate new passwords and email them to each owner.'
+      : 'All owners with emails have already received their credentials.
+No new emails will be sent.';
+    if (!window.confirm(msg)) return;
+
+    setProvision(true);
+    setProvisionMsg('');
+    try {
+      const res  = await authFetch('/api/credentials/send-now', { method: 'POST' });
+      const data = await res.json();
+      setProvisionMsg('✓ Provisioning running in background — credentials will be sent shortly');
+    } catch {
+      setProvisionMsg('✗ Failed to start provisioning');
+    } finally {
+      setProvision(false);
+    }
   }
-}
 
 
   const filtered = rows.filter(r => !r.deleted_at).filter(r =>
