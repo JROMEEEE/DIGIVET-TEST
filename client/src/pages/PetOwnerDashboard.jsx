@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { QRCodeSVG } from 'qrcode.react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -719,7 +720,6 @@ function EditPetModal({ pet, pendingRequest, onClose, onSaved }) {
 // ── My QR Code ────────────────────────────────────────────────────────────────
 
 function MyQrCode({ user, fullName, pets, vaccinations, onRefresh }) {
-  const { QRCodeSVG } = require('qrcode.react');
   const [generated, setGenerated] = useState(null); // { payload, timestamp }
   const [tooLarge, setTooLarge]   = useState(false);
 
