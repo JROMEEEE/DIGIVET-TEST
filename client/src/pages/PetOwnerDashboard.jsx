@@ -343,26 +343,155 @@ function VaccinationDropdowns({ vaccinations }) {
 // ── Records ───────────────────────────────────────────────────────────────────
 
 function Records({ pets, petsLoading, onPetUpdated, vaccinations, editRequests }) {
-  const [editing, setEditing] = useState(null);
-  const vaccMap    = Object.fromEntries(vaccinations.map(v => [v.pet_id, v]));
-  // Map pet_id → latest pending request (if any)
+  const [editing,  setEditing]  = useState(null);
+  const [expanded, setExpanded] = useState({});
+
+  // Map pet_id → full vaccination object (with all records)
+  const vaccMap = Object.fromEntries(vaccinations.map(v => [v.pet_id, v]));
+
+  // Map pet_id → latest pending edit request
   const pendingMap = {};
   editRequests.filter(r => r.status === 'pending').forEach(r => {
     if (!pendingMap[r.pet_id]) pendingMap[r.pet_id] = r;
   });
+
+  const toggle = id => setExpanded(e => ({ ...e, [id]: !e[id] }));
+
+  if (petsLoading) {
+    return (
+      <>
+        <div style={{ marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>Pet Records</h1>
+        </div>
+        <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem' }}>Loading…</p>
+      </>
+    );
+  }
 
   return (
     <>
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>Pet Records</h1>
         <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>
-          Your registered pets. Edit requests require veterinarian approval before changes take effect.
+          Click a pet to see its vaccination history. Edit requests require vet approval.
         </p>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-        <PetList pets={pets} loading={petsLoading} onEdit={pet => setEditing(pet)} vaccMap={vaccMap} pendingMap={pendingMap} />
-      </div>
+      {pets.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem', background: '#fff', borderRadius: '12px', border: '1px solid #eee' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🐾</div>
+          <p style={{ fontWeight: 700, color: '#333', margin: '0 0 0.4rem' }}>No pets on record</p>
+          <p style={{ color: '#888', fontSize: '0.85rem', margin: 0 }}>Your pets will appear here once added by the Veterinary Office.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {pets.map(pet => {
+            const vacc     = vaccMap[pet.pet_id];
+            const status   = getVaccineStatus(vacc?.last_vaccine_date, vacc?.total_doses);
+            const isOpen   = expanded[pet.pet_id];
+            const pending  = pendingMap[pet.pet_id];
+            const nextDate = vacc?.last_vaccine_date
+              ? (() => { const d = new Date(vacc.last_vaccine_date); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString(); })()
+              : null;
+
+            return (
+              <div key={pet.pet_id} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+
+                {/* Pet header row — click to toggle */}
+                <div
+                  onClick={() => toggle(pet.pet_id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', cursor: 'pointer', background: isOpen ? MAROON_LIGHT : '#fff', transition: 'background 0.15s' }}
+                  onMouseOver={e => { if (!isOpen) e.currentTarget.style.background = '#fafafa'; }}
+                  onMouseOut={e => { if (!isOpen) e.currentTarget.style.background = '#fff'; }}
+                >
+                  <span style={{ color: '#aaa', fontSize: '0.85rem', flexShrink: 0 }}>{isOpen ? '▾' : '▸'}</span>
+                  <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+
+                  {/* Pet basic info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, color: '#111', fontSize: '0.95rem' }}>{pet.pet_name}</span>
+                      {pending && (
+                        <span style={{ background: '#fef9c3', border: '1px solid #f0d080', color: '#7a5800', borderRadius: '999px', padding: '0.1rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}>
+                          ⏳ Pending Approval
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.15rem' }}>
+                      {[pet.pet_type, pet.pet_color, pet.pet_age ? `${pet.pet_age} old` : null].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+
+                  {/* Next due */}
+                  {nextDate && (
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginRight: '0.75rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Next Vaccine</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#333' }}>{nextDate}</div>
+                    </div>
+                  )}
+
+                  {/* Status badge */}
+                  <span style={{ background: status.bg, color: status.color, borderRadius: '999px', padding: '0.25rem 0.75rem', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {status.days < 0 ? '🚨 ' : status.days !== null && status.days <= 30 ? '⚠️ ' : ''}
+                    {status.label}
+                  </span>
+
+                  {/* Edit button */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setEditing(pet); }}
+                    style={{ background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '6px', padding: '0.35rem 0.8rem', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    {pending ? 'View Request' : 'Edit'}
+                  </button>
+                </div>
+
+                {/* Expanded: vaccination records */}
+                {isOpen && (
+                  <div style={{ borderTop: `1px solid ${MAROON_LIGHT}` }}>
+                    <div style={{ padding: '0.75rem 1.25rem', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#555' }}>
+                        💉 Vaccination History — {vacc?.total_doses ?? 0} dose{vacc?.total_doses !== 1 ? 's' : ''} recorded
+                      </span>
+                    </div>
+
+                    {!vacc?.records?.length ? (
+                      <p style={{ color: '#aaa', fontSize: '0.85rem', padding: '1rem 1.5rem', margin: 0 }}>
+                        No vaccination records found for {pet.pet_name}.
+                      </p>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+                            {['Date', 'Vaccine', 'Manufacturer No.', 'Type'].map(h => (
+                              <th key={h} style={{ padding: '0.6rem 1.25rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vacc.records.map((rec, ri) => (
+                            <tr key={rec.vaccine_id ?? ri} style={{ borderBottom: ri < vacc.records.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
+                              <td style={{ padding: '0.75rem 1.25rem', fontWeight: 600, color: '#333' }}>
+                                {rec.vaccine_date ? new Date(rec.vaccine_date).toLocaleDateString() : '—'}
+                              </td>
+                              <td style={{ padding: '0.75rem 1.25rem' }}>
+                                <span style={{ background: MAROON_LIGHT, color: MAROON, borderRadius: '4px', padding: '0.15rem 0.55rem', fontSize: '0.8rem', fontWeight: 600 }}>
+                                  💉 {rec.vaccine_details || '—'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.75rem 1.25rem', color: '#777' }}>{rec.manufacturer_no || '—'}</td>
+                              <td style={{ padding: '0.75rem 1.25rem', color: '#777' }}>{rec.is_office_visit ? 'Office Visit' : 'Barangay Drive'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {editing && (
         <EditPetModal
