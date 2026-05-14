@@ -89,26 +89,34 @@ router.get('/vaccinations', requireAuth, async (req, res) => {
   }
 });
 
-// Resolve owner_id from Supabase owner_table by name or email
+// Resolve owner_id from Supabase owner_table by name (partial) or email
 async function resolveOwnerId(user, supabase) {
-  const displayName = user.user_metadata?.full_name || '';
-  const email = user.email || '';
+  const displayName = (user.user_metadata?.full_name || '').trim();
+  const email       = (user.email || '').trim();
 
-  const { data: byName } = await supabase
-    .from('owner_table')
-    .select('owner_id')
-    .ilike('owner_name', displayName.trim())
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (byName) return byName.owner_id;
+  // Try exact email match first (most reliable)
+  if (email) {
+    const { data: byEmail } = await supabase
+      .from('owner_table')
+      .select('owner_id')
+      .ilike('email', email)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (byEmail) return byEmail.owner_id;
+  }
 
-  const { data: byEmail } = await supabase
-    .from('owner_table')
-    .select('owner_id')
-    .ilike('email', email.trim())
-    .is('deleted_at', null)
-    .maybeSingle();
-  return byEmail?.owner_id ?? null;
+  // Try partial name match with wildcard
+  if (displayName) {
+    const { data: byName } = await supabase
+      .from('owner_table')
+      .select('owner_id')
+      .ilike('owner_name', `%${displayName}%`)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (byName) return byName.owner_id;
+  }
+
+  return null;
 }
 
 // GET /api/pets/all-requests — vet gets ALL pending edit requests
