@@ -12,6 +12,9 @@ client/.env
 client/dist/
 client/build/
 
+# Migration reports contain plaintext passwords — never commit
+server/scripts/vet-migration-report.json
+
 # Logs
 *.log
 npm-debug.log*

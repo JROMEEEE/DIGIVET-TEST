@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import useSessionTimeout from '../hooks/useSessionTimeout';
 import SessionWarning from '../components/SessionWarning';
+import DbStatusBar from '../components/DbStatusBar';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -25,22 +26,27 @@ const MAROON_LIGHT = '#f5e8ea';
 async function fetchTable(table) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
+  if (!token) throw new Error(`No session — not logged in (table: ${table})`);
   const res = await fetch(`${API_BASE}/api/vetdata/${table}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Failed to load ${table}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`${res.status} on ${table}: ${body.error ?? res.statusText}`);
+  }
   return res.json();
 }
 
-function useVetTable(table) {
+function useVetTable(table, reloadKey = 0) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetchTable(table)
       .then(data => { setRows(data ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [table]);
+      .catch(err => { console.error('[useVetTable]', err.message); setLoading(false); });
+  }, [table, reloadKey]);
 
   return { rows, loading };
 }
@@ -119,6 +125,7 @@ export default function VetDashboard() {
     { id: 'owners',        icon: '👤', label: 'Pet Owners' },
     { id: 'records',       icon: '📋', label: 'Records' },
     { id: 'approvals',     icon: '✅', label: 'Edit Approvals', badge: pendingCount },
+    { id: 'approval_ids',  icon: '🆔', label: 'Approval IDs' },
     { id: 'veterinarians', icon: '⚕️', label: 'Veterinarians' },
   ];
 
@@ -168,20 +175,6 @@ export default function VetDashboard() {
               <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>Veterinarian</div>
             </div>
           </div>
-          <button
-            onClick={syncToLocal}
-            disabled={syncing}
-            style={{ width: '100%', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '6px', color: '#fff', padding: '0.5rem', fontSize: '0.82rem', cursor: syncing ? 'not-allowed' : 'pointer', fontWeight: 600, marginBottom: '0.5rem', opacity: syncing ? 0.7 : 1 }}
-          >
-            {syncing ? '⏳ Syncing…' : '🔄 Sync to Local'}
-          </button>
-
-          {syncMsg && (
-            <p style={{ fontSize: '0.7rem', color: syncMsg.startsWith('✓') ? '#86efac' : '#fca5a5', margin: '0 0 0.5rem', lineHeight: 1.4, wordBreak: 'break-word' }}>
-              {syncMsg}
-            </p>
-          )}
-
           <button onClick={() => setShowChangePwd(true)} style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.75)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500, marginBottom: '0.4rem' }}>
             🔑 Change Password
           </button>
@@ -194,10 +187,12 @@ export default function VetDashboard() {
       </aside>
 
       <main style={{ marginLeft: 230, flex: 1, padding: '2rem 2.5rem', minHeight: '100vh' }}>
-        {activeTab === 'overview'       && <OverviewTab setActiveTab={setActiveTab} refs={refs} />}
-        {activeTab === 'owners'         && <OwnersTab refs={refs} />}
+        <DbStatusBar />
+        {activeTab === 'overview'      && <OverviewTab setActiveTab={setActiveTab} refs={refs} />}
+        {activeTab === 'owners'        && <OwnersTab refs={refs} />}
         {activeTab === 'records'       && <RecordsTab refs={refs} />}
         {activeTab === 'approvals'     && <PendingApprovalsTab refs={refs} onReviewed={() => setPendingCount(c => Math.max(0, c - 1))} />}
+        {activeTab === 'approval_ids'  && <ApprovalIdsTab refs={refs} />}
         {activeTab === 'veterinarians' && <VeterinariansTab />}
       </main>
     </div>
@@ -207,7 +202,7 @@ export default function VetDashboard() {
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 function OverviewTab({ setActiveTab, refs }) {
-  const { rows: owners }    = useVetTable('owner_table');
+  const { rows: owners, loading }    = useVetTable('owner_table');
   const { rows: pets }      = useVetTable('pet_table');
   const { rows: vaccines }  = useVetTable('vaccine_table');
   const { rows: approvals } = useVetTable('approval_id_table');
@@ -229,7 +224,7 @@ function OverviewTab({ setActiveTab, refs }) {
     { label: 'Pet Owners',    key: 'owners',    icon: '👤', tab: 'records',  color: '#3b82f6' },
     { label: 'Pets on File',  key: 'pets',      icon: '🐾', tab: 'records',  color: MAROON },
     { label: 'Vaccinations',  key: 'vaccines',  icon: '💉', tab: 'records',  color: '#10b981' },
-    { label: 'Approval IDs',  key: 'approvals', icon: '🆔', tab: 'records',  color: '#f59e0b' },
+    { label: 'Approval IDs',  key: 'approvals', icon: '🆔', tab: 'approval_ids', color: '#f59e0b' },
     { label: 'Drive Sessions',key: 'sessions',  icon: '📍', tab: 'drive_sessions', color: '#8b5cf6' },
     { label: 'Barangays',     key: 'barangays', icon: '🏘️', tab: 'barangays',      color: '#06b6d4' },
     { label: 'Veterinarians', key: 'vets',      icon: '⚕️', tab: 'veterinarians',  color: '#ec4899' },
@@ -242,6 +237,7 @@ function OverviewTab({ setActiveTab, refs }) {
 
   return (
     <>
+      {owners.length === 0 && !loading && <DataError />}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>Dashboard Overview</h1>
         <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>All records across the DIGIVET system.</p>
@@ -318,6 +314,12 @@ function RecordsTab({ refs }) {
     (petsByOwner[p.owner_id] = petsByOwner[p.owner_id] || []).push(p);
   });
 
+  // Sessions visible in the session row — cascade off the selected barangay
+  const visibleSessions = (filterBrgy
+    ? sessions.filter(s => String(s.barangay_id) === filterBrgy)
+    : sessions
+  ).slice().sort((a, b) => new Date(b.session_date) - new Date(a.session_date));
+
   // Filter by session: only keep pets whose vaccinations include the selected session
   const petIdsInSession = filterSession
     ? new Set(vaccines.filter(v => String(v.session_id) === filterSession).map(v => v.pet_id))
@@ -383,8 +385,6 @@ function RecordsTab({ refs }) {
     </button>
   );
 
-  const selectStyle = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer', color: '#333' };
-
   return (
     <>
       {/* Page header */}
@@ -396,27 +396,45 @@ function RecordsTab({ refs }) {
       {/* Filter bar */}
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
         <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
-          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.9rem' }}>🔍</span>
+          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners, pets, vaccines…"
             style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e8e8e8', borderRadius: '8px', padding: '0.6rem 0.9rem 0.6rem 2.2rem', fontSize: '0.875rem', outline: 'none', background: '#fafafa', color: '#333' }} />
         </div>
-        <select value={filterBrgy} onChange={e => setFilterBrgy(e.target.value)} style={selectStyle}>
+
+        <select value={filterBrgy} onChange={e => { setFilterBrgy(e.target.value); setFilterSession(''); }}
+          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer', color: '#333' }}>
           <option value="">🏘️ All Barangays</option>
-          {barangays.map(b => <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name}</option>)}
+          {barangays.slice().sort((a, b) => a.barangay_name.localeCompare(b.barangay_name)).map(b => {
+            const count = owners.filter(o => !o.deleted_at && String(o.barangay_id) === String(b.barangay_id)).length;
+            return <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name} ({count})</option>;
+          })}
         </select>
-        <select value={filterSession} onChange={e => setFilterSession(e.target.value)} style={selectStyle}>
-          <option value="">📍 All Drive Sessions</option>
-          {sessions.sort((a,b) => new Date(b.session_date) - new Date(a.session_date)).map(s => (
-            <option key={s.session_id} value={s.session_id}>
-              {refs.barangayMap[s.barangay_id] ?? `Brgy #${s.barangay_id}`} · {s.session_date ? new Date(s.session_date).toLocaleDateString() : '—'}
-            </option>
-          ))}
+
+        <select value={filterSession} onChange={e => setFilterSession(e.target.value)} disabled={!filterBrgy}
+          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: filterBrgy ? '#fff' : '#f5f5f5', cursor: filterBrgy ? 'pointer' : 'not-allowed', color: filterBrgy ? '#333' : '#bbb' }}>
+          <option value="">{filterBrgy ? '📍 All Sessions' : '📍 Select a barangay first'}</option>
+          {visibleSessions.map(s => {
+            const label     = s.session_date ? new Date(s.session_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : `Session #${s.session_id}`;
+            const doseCount = vaccines.filter(v => String(v.session_id) === String(s.session_id)).length;
+            return (
+              <option key={s.session_id} value={s.session_id}>
+                {label} ({doseCount} dose{doseCount !== 1 ? 's' : ''})
+              </option>
+            );
+          })}
         </select>
+
         {(filterBrgy || filterSession || search) && (
           <button onClick={() => { setFilterBrgy(''); setFilterSession(''); setSearch(''); }}
-            style={{ background: 'transparent', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer', color: '#888', fontWeight: 600 }}>
+            style={{ background: 'transparent', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer', color: '#888', fontWeight: 600, whiteSpace: 'nowrap' }}>
             ✕ Clear
           </button>
+        )}
+
+        {(filterBrgy || filterSession || search) && (
+          <span style={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'nowrap' }}>
+            {filteredOwners.length} of {owners.filter(o => !o.deleted_at).length} owners
+          </span>
         )}
       </div>
 
@@ -1164,23 +1182,27 @@ function BarangaysTab() {
 }
 
 function VeterinariansTab() {
-  const { rows, loading } = useVetTable('vet_table');
-  const [search, setSearch] = useState('');
+  const [reloadKey, setReloadKey]   = useState(0);
+  const { rows, loading }           = useVetTable('vet_table', reloadKey);
+  const [search, setSearch]         = useState('');
+  const [addingVet, setAddingVet]   = useState(false);
   const { editing, setEditing, deleting, setDeleting, saveEdit, confirmDelete } = useEditDelete('vet_table', 'vet_id');
   const filtered = rows.filter(r => r.vet_name?.toLowerCase().includes(search.toLowerCase()));
   return (
     <>
       <TablePage title="Veterinarians" icon="⚕️" subtitle={`${filtered.length} on record`}
         search={search} onSearch={setSearch} loading={loading} empty="No records found."
-        columns={['ID', 'Name', 'Last Updated']}
+        columns={['ID', 'Name', 'Email', 'Last Updated']}
         rows={filtered.map(r => [
-          `#${r.vet_id}`, r.vet_name || '—',
+          `#${r.vet_id}`, r.vet_name || '—', r.email || '—',
           r.updated_at ? new Date(r.updated_at).toLocaleDateString() : '—',
         ])}
         rawRows={filtered} onEdit={setEditing} onDelete={setDeleting}
+        onAdd={() => setAddingVet(true)} addLabel="Add Vet"
       />
-      {editing  && <GenericEditModal title="Veterinarian" fields={[{ key:'vet_name', label:'Veterinarian Name', required:true }]} initialValues={editing} onSave={saveEdit} onClose={() => setEditing(null)} />}
-      {deleting && <DeleteConfirm name={deleting.vet_name} onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />}
+      {addingVet && <AddVetModal onClose={() => setAddingVet(false)} onCreated={() => { setAddingVet(false); setReloadKey(k => k + 1); }} />}
+      {editing   && <GenericEditModal title="Veterinarian" fields={[{ key:'vet_name', label:'Veterinarian Name', required:true }]} initialValues={editing} onSave={saveEdit} onClose={() => setEditing(null)} />}
+      {deleting  && <DeleteConfirm name={deleting.vet_name} onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />}
     </>
   );
 }
@@ -1260,7 +1282,7 @@ function PendingApprovalsTab({ refs, onReviewed }) {
   useEffect(() => {
     authFetch('/api/pets/all-requests')
       .then(r => r.json())
-      .then(data => { setRequests(data ?? []); setLoading(false); })
+      .then(data => { setRequests(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -1328,10 +1350,45 @@ function PendingApprovalsTab({ refs, onReviewed }) {
   );
 }
 
+// Shows the real API error when the dashboard loads with no data
+function DataError() {
+  const [msg, setMsg] = useState('Checking connection…');
+
+  useEffect(() => {
+    async function probe() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { setMsg('No active session — please log out and log back in.'); return; }
+        const res  = await fetch(`${API_BASE}/api/vetdata/owner_table`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) setMsg(`Server error ${res.status}: ${body.error ?? res.statusText}`);
+        else if (Array.isArray(body) && body.length === 0) setMsg('Connected — owner_table is empty in Supabase.');
+        else setMsg(null); // data loaded fine, hide banner
+      } catch (e) {
+        setMsg(`Cannot reach server: ${e.message}. Make sure the Express server is running on port 5001.`);
+      }
+    }
+    probe();
+  }, []);
+
+  if (!msg) return null;
+  return (
+    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '0.9rem 1.1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>⚠️</span>
+      <div>
+        <p style={{ margin: '0 0 0.2rem', fontWeight: 700, color: '#92400e', fontSize: '0.88rem' }}>No data loaded</p>
+        <p style={{ margin: 0, color: '#b45309', fontSize: '0.82rem' }}>{msg}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 
-// Generic table page with optional edit/delete support
-function TablePage({ title, icon, subtitle, search, onSearch, loading, empty, columns, rows, rawRows, onEdit, onDelete }) {
+// Generic table page with optional edit/delete/add support
+function TablePage({ title, icon, subtitle, search, onSearch, loading, empty, columns, rows, rawRows, onEdit, onDelete, onAdd, addLabel }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -1339,10 +1396,21 @@ function TablePage({ title, icon, subtitle, search, onSearch, loading, empty, co
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>{icon} {title}</h1>
           <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>{subtitle}</p>
         </div>
-        <input value={search} onChange={e => onSearch(e.target.value)}
-          placeholder={`Search ${title.toLowerCase()}…`}
-          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.6rem 1rem', fontSize: '0.88rem', outline: 'none', background: '#fff', width: 240 }}
-        />
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {onAdd && (
+            <button onClick={onAdd}
+              style={{ background: MAROON, color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem 1.1rem', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              onMouseOver={e => e.currentTarget.style.background = MAROON_DARK}
+              onMouseOut={e => e.currentTarget.style.background = MAROON}
+            >
+              + {addLabel ?? `Add ${title.replace(/s$/, '')}`}
+            </button>
+          )}
+          <input value={search} onChange={e => onSearch(e.target.value)}
+            placeholder={`Search ${title.toLowerCase()}…`}
+            style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.6rem 1rem', fontSize: '0.88rem', outline: 'none', background: '#fff', width: 240 }}
+          />
+        </div>
       </div>
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
         {loading
@@ -1493,6 +1561,147 @@ function GenericEditModal({ title, fields, initialValues, onSave, onClose }) {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Add Vet modal — creates vet_table row + user_profile + Supabase auth in one call
+function AddVetModal({ onClose, onCreated }) {
+  const [form, setForm]         = useState({ vet_name: '', email: '' });
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
+  const [created, setCreated]   = useState(null); // { vet_name, email, password }
+  const [focused, setFocused]   = useState('');
+  const [copied, setCopied]     = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const res  = await authFetch('/api/vetdata/vet_table', { method: 'POST', body: JSON.stringify(form) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create vet account');
+      setCreated(data);
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  function copyPassword() {
+    navigator.clipboard.writeText(created.password).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const inputStyle = (key) => ({
+    width: '100%', boxSizing: 'border-box',
+    border: `2px solid ${focused === key ? MAROON : '#e5e7eb'}`,
+    borderRadius: '10px', padding: '0.7rem 1rem', fontSize: '0.92rem',
+    outline: 'none', background: focused === key ? '#fff' : '#f9fafb',
+    color: '#111', transition: 'border-color 0.15s, background 0.15s',
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: '#fff', borderRadius: '18px', width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: MAROON, padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ fontWeight: 800, color: '#fff', margin: '0 0 0.15rem', fontSize: '1.05rem' }}>
+              {created ? 'Vet Account Created' : 'Add Veterinarian'}
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.65)', margin: 0, fontSize: '0.78rem' }}>
+              {created ? 'Share these credentials with the vet' : 'Creates login access for both systems'}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: '1rem', flexShrink: 0 }}>✕</button>
+        </div>
+
+        <div style={{ padding: '1.5rem' }}>
+          {/* ── Success state ── */}
+          {created ? (
+            <>
+              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.25rem' }}>
+                <p style={{ margin: '0 0 0.6rem', fontWeight: 700, color: '#166534', fontSize: '0.88rem' }}>Account ready — record these credentials now</p>
+                <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#111' }}><strong>Name:</strong> {created.vet_name}</p>
+                <p style={{ margin: '4px 0', fontSize: '0.9rem', color: '#111' }}><strong>Email:</strong> {created.email}</p>
+                <p style={{ margin: '8px 0 0', fontSize: '0.9rem', color: '#111' }}>
+                  <strong>Password:</strong>{' '}
+                  <span style={{ fontFamily: 'monospace', fontSize: '1rem', background: '#fff', padding: '2px 10px', borderRadius: '6px', border: '1px solid #d1fae5', letterSpacing: 1 }}>
+                    {created.password}
+                  </span>
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={copyPassword}
+                  style={{ flex: 1, background: copied ? '#166534' : '#f3f4f6', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', cursor: 'pointer', color: copied ? '#fff' : '#555', fontWeight: 600 }}>
+                  {copied ? 'Copied!' : 'Copy Password'}
+                </button>
+                <button onClick={onCreated}
+                  style={{ flex: 2, background: MAROON, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer' }}
+                  onMouseOver={e => e.currentTarget.style.background = MAROON_DARK}
+                  onMouseOut={e => e.currentTarget.style.background = MAROON}
+                >
+                  Done
+                </button>
+              </div>
+            </>
+          ) : (
+            /* ── Create form ── */
+            <>
+              {error && (
+                <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#555', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Veterinarian Name <span style={{ color: MAROON }}>*</span>
+                  </label>
+                  <input type="text" required value={form.vet_name}
+                    onChange={e => setForm(f => ({ ...f, vet_name: e.target.value }))}
+                    onFocus={() => setFocused('vet_name')} onBlur={() => setFocused('')}
+                    style={inputStyle('vet_name')} placeholder="e.g. Dr. Juan Santos"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#555', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Email Address <span style={{ color: MAROON }}>*</span>
+                  </label>
+                  <input type="email" required value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    onFocus={() => setFocused('email')} onBlur={() => setFocused('')}
+                    style={inputStyle('email')} placeholder="vet@example.com"
+                  />
+                  <p style={{ margin: '0.4rem 0 0', fontSize: '0.77rem', color: '#888' }}>
+                    Used for login on both the online and local systems. A password will be generated automatically.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
+                  <button type="button" onClick={onClose}
+                    style={{ flex: 1, background: '#f3f4f6', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', cursor: 'pointer', color: '#555', fontWeight: 600 }}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving}
+                    style={{ flex: 2, background: saving ? '#d1d5db' : MAROON, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}
+                    onMouseOver={e => { if (!saving) e.currentTarget.style.background = MAROON_DARK; }}
+                    onMouseOut={e => { if (!saving) e.currentTarget.style.background = MAROON; }}
+                  >
+                    {saving ? 'Creating…' : 'Create Vet Account'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>

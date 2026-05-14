@@ -46,6 +46,62 @@ router.get('/:table', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/vetdata/vet_table — create a new vet with login account
+// Writes to vet_table, user_profile, and Supabase auth in one operation.
+router.post('/vet_table', requireAuth, async (req, res) => {
+  const { vet_name, email } = req.body;
+  if (!vet_name?.trim()) return res.status(400).json({ error: 'vet_name is required' });
+  if (!email?.trim())    return res.status(400).json({ error: 'email is required' });
+
+  try {
+    const getSupabase = require('../supabase');
+    const bcrypt      = require('bcryptjs');
+    const supabase    = getSupabase();
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 1. Insert into vet_table
+    const { data: newVet, error: vetErr } = await supabase
+      .from('vet_table')
+      .insert({ vet_name: vet_name.trim(), email: normalizedEmail })
+      .select('vet_id, vet_name, email')
+      .single();
+
+    if (vetErr) return res.status(500).json({ error: vetErr.message });
+
+    // 2. Generate and hash password
+    const { generatePassword, upsertSupabaseUser } = require('./authHelpers');
+    const password = generatePassword();
+    const hash = await bcrypt.hash(password, 10);
+
+    // 3. Create user_profile row
+    const { error: profileErr } = await supabase
+      .from('user_profile')
+      .insert({
+        display_name:        vet_name.trim(),
+        role:                'ADMIN',
+        local_email:         normalizedEmail,
+        local_password_hash: hash,
+      });
+
+    if (profileErr) {
+      // Roll back the vet_table row so we don't leave orphans
+      await supabase.from('vet_table').delete().eq('vet_id', newVet.vet_id);
+      return res.status(500).json({ error: 'Failed to create login profile: ' + profileErr.message });
+    }
+
+    // 4. Create Supabase auth account (enables online login)
+    await upsertSupabaseUser(supabase, normalizedEmail, password, {
+      full_name: vet_name.trim(),
+      role: 'veterinarian',
+    });
+
+    res.json({ success: true, vet_id: newVet.vet_id, vet_name: newVet.vet_name, email: normalizedEmail, password });
+  } catch (err) {
+    console.error('create-vet error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Primary key per table
 const TABLE_PKS = {
   owner_table:        'owner_id',

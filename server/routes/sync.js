@@ -10,6 +10,7 @@ const TABLES = [
   { table: 'approval_id_table',   pk: 'approval_id' },
   { table: 'vaccine_table',       pk: 'vaccine_id' },
   { table: 'pet_edit_requests',   pk: 'request_id' },
+  { table: 'user_profile',        pk: 'id' },
 ];
 
 // POST /api/sync/to-local — pulls all data from Supabase and upserts into local PostgreSQL
