@@ -109,13 +109,11 @@ export default function VetDashboard() {
   }, []);
 
   const navItems = [
-    { id: 'overview',       icon: '⊞',  label: 'Overview' },
-    { id: 'owners',         icon: '👤', label: 'Pet Owners' },
-    { id: 'records',        icon: '📋', label: 'Records' },
-    { id: 'approvals',      icon: '✅', label: 'Edit Approvals', badge: pendingCount },
-    { id: 'drive_sessions', icon: '📍', label: 'Drive Sessions' },
-    { id: 'barangays',      icon: '🏘️', label: 'Barangays' },
-    { id: 'veterinarians',  icon: '⚕️', label: 'Veterinarians' },
+    { id: 'overview',      icon: '⊞',  label: 'Overview' },
+    { id: 'owners',        icon: '👤', label: 'Pet Owners' },
+    { id: 'records',       icon: '📋', label: 'Records' },
+    { id: 'approvals',     icon: '✅', label: 'Edit Approvals', badge: pendingCount },
+    { id: 'veterinarians', icon: '⚕️', label: 'Veterinarians' },
   ];
 
   return (
@@ -187,11 +185,9 @@ export default function VetDashboard() {
       <main style={{ marginLeft: 230, flex: 1, padding: '2rem 2.5rem', minHeight: '100vh' }}>
         {activeTab === 'overview'       && <OverviewTab setActiveTab={setActiveTab} refs={refs} />}
         {activeTab === 'owners'         && <OwnersTab refs={refs} />}
-        {activeTab === 'records'        && <RecordsTab refs={refs} />}
-        {activeTab === 'approvals'      && <PendingApprovalsTab refs={refs} onReviewed={() => setPendingCount(c => Math.max(0, c - 1))} />}
-        {activeTab === 'drive_sessions' && <DriveSessionsTab refs={refs} />}
-        {activeTab === 'barangays'      && <BarangaysTab />}
-        {activeTab === 'veterinarians'  && <VeterinariansTab />}
+        {activeTab === 'records'       && <RecordsTab refs={refs} />}
+        {activeTab === 'approvals'     && <PendingApprovalsTab refs={refs} onReviewed={() => setPendingCount(c => Math.max(0, c - 1))} />}
+        {activeTab === 'veterinarians' && <VeterinariansTab />}
       </main>
     </div>
   );
@@ -281,19 +277,22 @@ function OverviewTab({ setActiveTab, refs }) {
 
 // ── Tab components ────────────────────────────────────────────────────────────
 
-// ── Unified Records Tab ────────────────────────────────────────────────────────
-// Owner → Pets → Vaccinations + Approval IDs all in one hierarchical view
+// ── Records Tab — grouped by Barangay, filterable by Drive Session ───────────
 
 function RecordsTab({ refs }) {
   const { rows: owners,    loading: lo } = useVetTable('owner_table');
   const { rows: pets,      loading: lp } = useVetTable('pet_table');
   const { rows: vaccines,  loading: lv } = useVetTable('vaccine_table');
   const { rows: approvals, loading: la } = useVetTable('approval_id_table');
+  const { rows: sessions               } = useVetTable('drive_session_table');
+  const { rows: barangays              } = useVetTable('barangay_table');
 
-  const [search,   setSearch]   = useState('');
-  const [expanded, setExpanded] = useState({});   // ownerX, petY
-  const [modal,    setModal]    = useState(null); // { type, row }
-  const [delModal, setDelModal] = useState(null); // { table, pk, name, row }
+  const [search,        setSearch]       = useState('');
+  const [filterBrgy,    setFilterBrgy]   = useState('');   // barangay_id
+  const [filterSession, setFilterSession]= useState('');   // session_id
+  const [expanded,      setExpanded]     = useState({});
+  const [modal,         setModal]        = useState(null);
+  const [delModal,      setDelModal]     = useState(null);
 
   const loading = lo || lp || lv || la;
 
@@ -308,7 +307,18 @@ function RecordsTab({ refs }) {
     (petsByOwner[p.owner_id] = petsByOwner[p.owner_id] || []).push(p);
   });
 
+  // Filter by session: only keep pets whose vaccinations include the selected session
+  const petIdsInSession = filterSession
+    ? new Set(vaccines.filter(v => String(v.session_id) === filterSession).map(v => v.pet_id))
+    : null;
+
+  // Filter owners
   const filteredOwners = owners.filter(o => !o.deleted_at).filter(o => {
+    if (filterBrgy && String(o.barangay_id) !== filterBrgy) return false;
+    if (petIdsInSession) {
+      const ownerPets = petsByOwner[o.owner_id] ?? [];
+      if (!ownerPets.some(p => petIdsInSession.has(p.pet_id))) return false;
+    }
     const q = search.toLowerCase();
     if (!q) return true;
     if (o.owner_name?.toLowerCase().includes(q)) return true;
@@ -317,6 +327,18 @@ function RecordsTab({ refs }) {
       p.pet_name?.toLowerCase().includes(q) ||
       (vaccByPet[p.pet_id] ?? []).some(v => v.vaccine_details?.toLowerCase().includes(q))
     );
+  });
+
+  // Group filtered owners by barangay
+  const byBarangay = {};
+  filteredOwners.forEach(o => {
+    const key = o.barangay_id ?? 0;
+    (byBarangay[key] = byBarangay[key] || []).push(o);
+  });
+  const barangayIds = Object.keys(byBarangay).sort((a, b) => {
+    const na = refs.barangayMap[a] ?? '';
+    const nb = refs.barangayMap[b] ?? '';
+    return na.localeCompare(nb);
   });
 
   function toggle(key) { setExpanded(e => ({ ...e, [key]: !e[key] })); }
@@ -338,109 +360,163 @@ function RecordsTab({ refs }) {
   }
 
   const btnEdit = (table, pk, row, fields, title) => (
-    <button onClick={() => setModal({ table, pk, row, fields, title })}
+    <button onClick={e => { e.stopPropagation(); setModal({ table, pk, row, fields, title }); }}
       style={{ background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '5px', padding: '0.25rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginRight: 4 }}>
       Edit
     </button>
   );
   const btnDel = (table, pk, name, row) => (
-    <button onClick={() => setDelModal({ table, pk, name, row })}
+    <button onClick={e => { e.stopPropagation(); setDelModal({ table, pk, name, row }); }}
       style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '5px', padding: '0.25rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
       Delete
     </button>
   );
 
+  const selectStyle = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer', color: '#333' };
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>📋 Records</h1>
-          <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>Pet owners with their pets, vaccinations, and approval IDs.</p>
-        </div>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>📋 Records</h1>
+        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>Grouped by barangay. Filter by drive session or search by name.</p>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners, pets, vaccines…"
-          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.6rem 1rem', fontSize: '0.88rem', outline: 'none', background: '#fff', width: 280 }} />
+          style={{ ...selectStyle, flex: 1, minWidth: 200 }} />
+        <select value={filterBrgy} onChange={e => setFilterBrgy(e.target.value)} style={selectStyle}>
+          <option value="">All Barangays</option>
+          {barangays.map(b => (
+            <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name}</option>
+          ))}
+        </select>
+        <select value={filterSession} onChange={e => setFilterSession(e.target.value)} style={selectStyle}>
+          <option value="">All Drive Sessions</option>
+          {sessions.sort((a,b) => new Date(b.session_date) - new Date(a.session_date)).map(s => (
+            <option key={s.session_id} value={s.session_id}>
+              {refs.barangayMap[s.barangay_id] ?? `Brgy #${s.barangay_id}`} — {s.session_date ? new Date(s.session_date).toLocaleDateString() : '—'}
+            </option>
+          ))}
+        </select>
+        {(filterBrgy || filterSession || search) && (
+          <button onClick={() => { setFilterBrgy(''); setFilterSession(''); setSearch(''); }}
+            style={{ background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.84rem', cursor: 'pointer', color: '#666', fontWeight: 600 }}>
+            Clear
+          </button>
+        )}
       </div>
 
       {loading ? (
         <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem' }}>Loading…</p>
-      ) : filteredOwners.length === 0 ? (
+      ) : barangayIds.length === 0 ? (
         <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem' }}>No records found.</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          {filteredOwners.map(owner => {
-            const ownerKey  = `o${owner.owner_id}`;
-            const ownerOpen = expanded[ownerKey];
-            const ownerPets = petsByOwner[owner.owner_id] ?? [];
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {barangayIds.map(brgyId => {
+            const brgyName    = refs.barangayMap[brgyId] ?? `Barangay #${brgyId}`;
+            const brgyOwners  = byBarangay[brgyId];
+            const brgyKey     = `b${brgyId}`;
+            const brgyOpen    = expanded[brgyKey] !== false; // open by default
 
             return (
-              <div key={owner.owner_id} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
-
-                {/* ── Owner row ── */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', background: ownerOpen ? '#fdf2f4' : '#fff', borderBottom: ownerOpen ? '1px solid #f0f0f0' : 'none' }}>
-                  <span onClick={() => toggle(ownerKey)} style={{ cursor: 'pointer', color: '#aaa', fontSize: '0.85rem', userSelect: 'none' }}>{ownerOpen ? '▾' : '▸'}</span>
-                  <div onClick={() => toggle(ownerKey)} style={{ flex: 1, cursor: 'pointer' }}>
-                    <span style={{ fontWeight: 700, color: '#111', fontSize: '0.92rem' }}>{owner.owner_name}</span>
-                    <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '0.75rem' }}>{owner.contact_number}</span>
-                    <span style={{ color: '#aaa', fontSize: '0.78rem', marginLeft: '0.75rem' }}>{refs.barangayMap[owner.barangay_id] ?? `Brgy #${owner.barangay_id}`}</span>
-                  </div>
-                  <span style={{ background: ownerPets.length ? MAROON_LIGHT : '#f5f5f5', color: ownerPets.length ? MAROON : '#aaa', borderRadius: '999px', padding: '0.15rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, marginRight: 8 }}>
-                    {ownerPets.length} pet{ownerPets.length !== 1 ? 's' : ''}
+              <div key={brgyId}>
+                {/* Barangay header */}
+                <div
+                  onClick={() => toggle(brgyKey)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 1rem', background: MAROON, borderRadius: '10px', cursor: 'pointer', marginBottom: '0.5rem' }}
+                >
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>{brgyOpen ? '▾' : '▸'}</span>
+                  <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>🏘️ {brgyName}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
+                    {brgyOwners.length} owner{brgyOwners.length !== 1 ? 's' : ''}
                   </span>
-                  {btnEdit('owner_table', 'owner_id', owner, [{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }], 'Owner')}
-                  {btnDel('owner_table', 'owner_id', owner.owner_name, owner)}
                 </div>
 
-                {/* ── Pets under this owner ── */}
-                {ownerOpen && ownerPets.map(pet => {
-                  const petKey  = `p${pet.pet_id}`;
-                  const petOpen = expanded[petKey];
-                  const petVacc = (vaccByPet[pet.pet_id] ?? []).sort((a, b) => new Date(b.vaccine_date) - new Date(a.vaccine_date));
+                {/* Owners in this barangay */}
+                {brgyOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '0.5rem' }}>
+                    {brgyOwners.map(owner => {
+                      const ownerKey  = `o${owner.owner_id}`;
+                      const ownerOpen = expanded[ownerKey];
+                      const ownerPets = (petsByOwner[owner.owner_id] ?? []).filter(p =>
+                        !petIdsInSession || petIdsInSession.has(p.pet_id)
+                      );
 
-                  return (
-                    <div key={pet.pet_id} style={{ borderTop: '1px solid #f5f5f5' }}>
-
-                      {/* Pet row */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1.25rem 0.75rem 2.5rem', background: petOpen ? '#f8f8fb' : 'transparent' }}>
-                        <span onClick={() => toggle(petKey)} style={{ cursor: 'pointer', color: '#bbb', fontSize: '0.8rem', userSelect: 'none' }}>{petOpen ? '▾' : '▸'}</span>
-                        <span style={{ fontSize: '1.1rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
-                        <div onClick={() => toggle(petKey)} style={{ flex: 1, cursor: 'pointer' }}>
-                          <span style={{ fontWeight: 600, color: '#222', fontSize: '0.88rem' }}>{pet.pet_name}</span>
-                          <span style={{ color: '#888', fontSize: '0.78rem', marginLeft: '0.6rem' }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
-                        </div>
-                        <span style={{ background: petVacc.length ? '#f0fdf4' : '#f5f5f5', color: petVacc.length ? '#16a34a' : '#aaa', borderRadius: '999px', padding: '0.15rem 0.6rem', fontSize: '0.73rem', fontWeight: 700, marginRight: 8 }}>
-                          {petVacc.length} vaccine{petVacc.length !== 1 ? 's' : ''}
-                        </span>
-                        {btnEdit('pet_table', 'pet_id', pet, [{ key:'pet_name', label:'Pet Name', required:true }, { key:'pet_type', label:'Type / Species' }, { key:'pet_color', label:'Color' }, { key:'pet_age', label:'Age' }], 'Pet')}
-                        {btnDel('pet_table', 'pet_id', pet.pet_name, pet)}
-                      </div>
-
-                      {/* Vaccination records under this pet */}
-                      {petOpen && (
-                        <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
-                          {petVacc.length === 0 ? (
-                            <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 4rem', margin: 0 }}>No vaccination records.</p>
-                          ) : petVacc.map((v, vi) => (
-                            <div key={v.vaccine_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 1.25rem 0.65rem 4rem', borderTop: vi > 0 ? '1px solid #f0f0f0' : 'none' }}>
-                              <span style={{ fontSize: '1rem' }}>💉</span>
-                              <div style={{ flex: 1, fontSize: '0.83rem' }}>
-                                <span style={{ fontWeight: 600, color: '#333' }}>{v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}</span>
-                                <span style={{ color: '#555', marginLeft: '0.6rem' }}>{v.vaccine_details || '—'}</span>
-                                {v.manufacturer_no && <span style={{ color: '#aaa', marginLeft: '0.6rem', fontSize: '0.78rem' }}>· {v.manufacturer_no}</span>}
-                                {v.approval_id && <span style={{ background: '#fef9c3', color: '#7a5800', borderRadius: '4px', padding: '0.1rem 0.5rem', fontSize: '0.72rem', fontWeight: 700, marginLeft: '0.6rem' }}>🆔 {approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>}
-                                <span style={{ color: '#bbb', marginLeft: '0.6rem', fontSize: '0.76rem' }}>{v.is_office_visit ? 'Office Visit' : 'Barangay Drive'}</span>
-                              </div>
-                              {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
-                              {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
+                      return (
+                        <div key={owner.owner_id} style={{ background: '#fff', borderRadius: '10px', border: '1px solid #eee', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                          {/* Owner row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', background: ownerOpen ? '#fdf2f4' : '#fff', borderBottom: ownerOpen ? '1px solid #f0f0f0' : 'none' }}>
+                            <span onClick={() => toggle(ownerKey)} style={{ cursor: 'pointer', color: '#aaa', fontSize: '0.85rem', userSelect: 'none' }}>{ownerOpen ? '▾' : '▸'}</span>
+                            <div onClick={() => toggle(ownerKey)} style={{ flex: 1, cursor: 'pointer' }}>
+                              <span style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{owner.owner_name}</span>
+                              <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '0.75rem' }}>{owner.contact_number}</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                            <span style={{ background: ownerPets.length ? MAROON_LIGHT : '#f5f5f5', color: ownerPets.length ? MAROON : '#aaa', borderRadius: '999px', padding: '0.15rem 0.6rem', fontSize: '0.73rem', fontWeight: 700, marginRight: 6 }}>
+                              {ownerPets.length} pet{ownerPets.length !== 1 ? 's' : ''}
+                            </span>
+                            {btnEdit('owner_table', 'owner_id', owner, [{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }], 'Owner')}
+                            {btnDel('owner_table', 'owner_id', owner.owner_name, owner)}
+                          </div>
 
-                {ownerOpen && ownerPets.length === 0 && (
-                  <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 2.5rem', margin: 0 }}>No pets registered.</p>
+                          {/* Pets */}
+                          {ownerOpen && ownerPets.map(pet => {
+                            const petKey  = `p${pet.pet_id}`;
+                            const petOpen = expanded[petKey];
+                            const petVacc = (vaccByPet[pet.pet_id] ?? [])
+                              .filter(v => !filterSession || String(v.session_id) === filterSession)
+                              .sort((a, b) => new Date(b.vaccine_date) - new Date(a.vaccine_date));
+
+                            return (
+                              <div key={pet.pet_id} style={{ borderTop: '1px solid #f5f5f5' }}>
+                                {/* Pet row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.7rem 1.25rem 0.7rem 2.5rem', background: petOpen ? '#f8f8fb' : 'transparent' }}>
+                                  <span onClick={() => toggle(petKey)} style={{ cursor: 'pointer', color: '#bbb', fontSize: '0.8rem', userSelect: 'none' }}>{petOpen ? '▾' : '▸'}</span>
+                                  <span style={{ fontSize: '1.1rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+                                  <div onClick={() => toggle(petKey)} style={{ flex: 1, cursor: 'pointer' }}>
+                                    <span style={{ fontWeight: 600, color: '#222', fontSize: '0.87rem' }}>{pet.pet_name}</span>
+                                    <span style={{ color: '#888', fontSize: '0.77rem', marginLeft: '0.6rem' }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
+                                  </div>
+                                  <span style={{ background: petVacc.length ? '#f0fdf4' : '#f5f5f5', color: petVacc.length ? '#16a34a' : '#aaa', borderRadius: '999px', padding: '0.15rem 0.6rem', fontSize: '0.72rem', fontWeight: 700, marginRight: 6 }}>
+                                    {petVacc.length} vaccine{petVacc.length !== 1 ? 's' : ''}
+                                  </span>
+                                  {btnEdit('pet_table', 'pet_id', pet, [{ key:'pet_name', label:'Pet Name', required:true }, { key:'pet_type', label:'Type / Species' }, { key:'pet_color', label:'Color' }, { key:'pet_age', label:'Age' }], 'Pet')}
+                                  {btnDel('pet_table', 'pet_id', pet.pet_name, pet)}
+                                </div>
+
+                                {/* Vaccination records */}
+                                {petOpen && (
+                                  <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                                    {petVacc.length === 0 ? (
+                                      <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 4rem', margin: 0 }}>No vaccination records.</p>
+                                    ) : petVacc.map((v, vi) => (
+                                      <div key={v.vaccine_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 1.25rem 0.6rem 4rem', borderTop: vi > 0 ? '1px solid #f0f0f0' : 'none' }}>
+                                        <span style={{ fontSize: '1rem' }}>💉</span>
+                                        <div style={{ flex: 1, fontSize: '0.82rem' }}>
+                                          <span style={{ fontWeight: 600, color: '#333' }}>{v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}</span>
+                                          <span style={{ color: '#555', marginLeft: '0.6rem' }}>{v.vaccine_details || '—'}</span>
+                                          {v.manufacturer_no && <span style={{ color: '#aaa', marginLeft: '0.5rem', fontSize: '0.77rem' }}>· {v.manufacturer_no}</span>}
+                                          {v.approval_id && <span style={{ background: '#fef9c3', color: '#7a5800', borderRadius: '4px', padding: '0.1rem 0.45rem', fontSize: '0.71rem', fontWeight: 700, marginLeft: '0.5rem' }}>🆔 {approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>}
+                                          {v.session_id && <span style={{ background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', padding: '0.1rem 0.45rem', fontSize: '0.71rem', fontWeight: 600, marginLeft: '0.5rem' }}>📍 Session #{v.session_id}</span>}
+                                          <span style={{ color: '#bbb', marginLeft: '0.5rem', fontSize: '0.75rem' }}>{v.is_office_visit ? 'Office Visit' : 'Barangay Drive'}</span>
+                                        </div>
+                                        {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
+                                        {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {ownerOpen && ownerPets.length === 0 && (
+                            <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.25rem 0.75rem 2.5rem', margin: 0 }}>No pets registered.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             );
@@ -448,25 +524,8 @@ function RecordsTab({ refs }) {
         </div>
       )}
 
-      {/* Generic Edit Modal */}
-      {modal && (
-        <GenericEditModal
-          title={modal.title}
-          fields={modal.fields}
-          initialValues={modal.row}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-
-      {/* Delete Confirmation */}
-      {delModal && (
-        <DeleteConfirm
-          name={delModal.name}
-          onConfirm={handleDelete}
-          onCancel={() => setDelModal(null)}
-        />
-      )}
+      {modal && <GenericEditModal title={modal.title} fields={modal.fields} initialValues={modal.row} onSave={handleSave} onClose={() => setModal(null)} />}
+      {delModal && <DeleteConfirm name={delModal.name} onConfirm={handleDelete} onCancel={() => setDelModal(null)} />}
     </>
   );
 }
