@@ -13,8 +13,16 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      // After email confirmation redirect, send user to correct dashboard
+      if (event === 'SIGNED_IN' && session?.user) {
+        const role = session.user.user_metadata?.role;
+        const path = window.location.pathname;
+        if (path === '/' || path === '') {
+          window.location.href = role === 'veterinarian' ? '/vet' : '/dashboard';
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
