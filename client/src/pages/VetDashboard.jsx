@@ -675,7 +675,7 @@ useEffect(() => {
             cursor: provisioning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
             opacity: provisioning ? 0.7 : 1,
           }}>
-            {provisioning ? 'Sending…' : (() => { const u = filtered.filter(r => r.email && !r.credentials_sent).length; return u > 0 ?  : '📧 All Credentials Sent'; })()}
+            {provisioning ? 'Sending…' : (() => { const u = filtered.filter(r => r.email && !r.credentials_sent).length; return u > 0 ? ('Send to ' + u + ' Unsent Owner' + (u !== 1 ? 's' : '')) : 'All Credentials Sent'; })()} 
           </button>
         </div>
       </div>
