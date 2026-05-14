@@ -7,29 +7,44 @@ async function stageCredentials() {
   const { generatePassword } = require('./authHelpers');
   const supabase = getSupabase();
 
-  // Find owners with email, not yet staged and not yet sent
-  const { data: owners } = await supabase
+  // Treat both false AND null as "not sent"
+  const { data: owners, error: fetchErr } = await supabase
     .from('owner_table')
     .select('owner_id, owner_name, email')
     .not('email', 'is', null)
     .neq('email', '')
     .is('deleted_at', null)
     .is('pending_password', null)
-    .eq('credentials_sent', false);
+    .or('credentials_sent.eq.false,credentials_sent.is.null');
 
+  if (fetchErr) {
+    console.error('[credentials] Fetch error:', fetchErr.message);
+    return { staged: 0 };
+  }
+
+  console.log(`[credentials] Found ${owners?.length ?? 0} owner(s) to stage`);
   if (!owners?.length) return { staged: 0 };
 
   let staged = 0;
   for (const owner of owners) {
+    const email = owner.email?.toLowerCase().trim();
+    if (!email) continue;
+
     const password = generatePassword();
     const { error } = await supabase
       .from('owner_table')
       .update({ pending_password: password })
       .eq('owner_id', owner.owner_id);
-    if (!error) staged++;
+
+    if (error) {
+      console.error(`[credentials] Stage failed for ${email}:`, error.message);
+    } else {
+      console.log(`[credentials] Staged: ${email}`);
+      staged++;
+    }
   }
 
-  console.log(`[credentials] Staged ${staged} new owner(s)`);
+  console.log(`[credentials] Total staged: ${staged}`);
   return { staged };
 }
 
@@ -39,37 +54,33 @@ async function sendQueued() {
   const { sendCredentialsEmail, upsertSupabaseUser } = require('./authHelpers');
   const supabase = getSupabase();
 
-  // Find owners that are staged but not yet sent
   const { data: owners } = await supabase
     .from('owner_table')
     .select('owner_id, owner_name, email, pending_password')
     .not('pending_password', 'is', null)
-    .eq('credentials_sent', false)
+    .or('credentials_sent.eq.false,credentials_sent.is.null')
     .is('deleted_at', null);
 
   if (!owners?.length) return { sent: 0, errors: [] };
 
-  // Send all in parallel for speed
   const settled = await Promise.allSettled(
     owners.map(async owner => {
       const email    = owner.email.toLowerCase().trim();
       const password = owner.pending_password;
-      const metadata = {
-        full_name: owner.owner_name,
-        role: 'pet_owner',
-        owner_id: owner.owner_id,
-      };
+      const metadata = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
 
-      // Create/update Supabase auth account
+      // Create/update Supabase auth account with plain text password
       await upsertSupabaseUser(supabase, email, password, metadata);
 
-      // Send email with credentials and QR
+      // Send email with plain text password + QR
       await sendCredentialsEmail(email, owner.owner_name, password);
 
-      // Mark as sent and clear the plain text password
+      // Hash the password AFTER sending, then store the hash (never clear it)
+      const bcrypt = require('bcryptjs');
+      const hashed = await bcrypt.hash(password, 10);
       await supabase
         .from('owner_table')
-        .update({ credentials_sent: true, pending_password: null })
+        .update({ credentials_sent: true, pending_password: hashed })
         .eq('owner_id', owner.owner_id);
 
       console.log(`[credentials] Sent to ${email}`);
@@ -77,10 +88,7 @@ async function sendQueued() {
   );
 
   const sent   = settled.filter(r => r.status === 'fulfilled').length;
-  const errors = settled
-    .filter(r => r.status === 'rejected')
-    .map(r => r.reason?.message);
-
+  const errors = settled.filter(r => r.status === 'rejected').map(r => r.reason?.message);
   return { sent, errors };
 }
 
@@ -93,30 +101,21 @@ async function runFullProvision() {
 
 // ── API ROUTES ────────────────────────────────────────────────────────────────
 
-// POST /api/credentials/stage — stage only (fast)
 router.post('/stage', requireAuth, async (req, res) => {
-  try {
-    const result = await stageCredentials();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try { res.json(await stageCredentials()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/credentials/send — send queued only (slow, run in background)
 router.post('/send', requireAuth, async (req, res) => {
-  // Return immediately, send in background
   res.json({ message: 'Sending queued credentials in background…' });
   sendQueued().catch(e => console.error('[credentials] send error:', e.message));
 });
 
-// POST /api/credentials/send-now — stage + send immediately (vet "Send Now" button)
 router.post('/send-now', requireAuth, async (req, res) => {
   res.json({ message: 'Provisioning in background…' });
   runFullProvision().catch(e => console.error('[credentials] error:', e.message));
 });
 
-// GET /api/credentials/status — counts for the vet dashboard
 router.get('/status', requireAuth, async (req, res) => {
   try {
     const getSupabase = require('../supabase');
@@ -129,12 +128,11 @@ router.get('/status', requireAuth, async (req, res) => {
       .neq('email', '')
       .is('deleted_at', null);
 
-    const total   = owners?.length ?? 0;
     const sent    = owners?.filter(o => o.credentials_sent).length ?? 0;
     const staged  = owners?.filter(o => o.pending_password && !o.credentials_sent).length ?? 0;
     const pending = owners?.filter(o => !o.pending_password && !o.credentials_sent).length ?? 0;
 
-    res.json({ total, sent, staged, pending });
+    res.json({ total: owners?.length ?? 0, sent, staged, pending });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
