@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  envDir: '../server',
+  // In development, read env vars from server/.env (local only)
+  // On Render, env vars are set per-service in the dashboard
+  envDir: mode === 'development' ? '../server' : '.',
   server: {
     port: 5173,
     open: true,
@@ -14,4 +16,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
