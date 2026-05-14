@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -62,7 +63,8 @@ export default function PetOwnerDashboard() {
   const [pets, setPets]             = useState([]);
   const [petsLoading, setPetsLoading] = useState(true);
   const [vaccinations, setVaccinations] = useState([]);
-  const [editRequests, setEditRequests] = useState([]); // pending approval requests
+  const [editRequests, setEditRequests] = useState([]);
+  const [showChangePwd, setShowChangePwd] = useState(false);
   const [activeTab, setActiveTab]   = useState('overview');
 
   function loadPets() {
@@ -147,6 +149,12 @@ export default function PetOwnerDashboard() {
             </div>
           </div>
           <button
+            onClick={() => setShowChangePwd(true)}
+            style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.75)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500, marginBottom: '0.4rem' }}
+          >
+            🔑 Change Password
+          </button>
+          <button
             onClick={handleLogout}
             style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.85)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500 }}
           >
@@ -154,6 +162,7 @@ export default function PetOwnerDashboard() {
           </button>
         </div>
       </aside>
+      {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
 
       {/* Main */}
       <main style={{ marginLeft: 230, flex: 1, padding: '2rem 2.5rem', minHeight: '100vh' }}>

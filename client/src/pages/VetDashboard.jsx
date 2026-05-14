@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -71,9 +72,10 @@ export default function VetDashboard() {
     navigate('/', { replace: true });
   }
 
-  const [pendingCount, setPendingCount] = useState(0);
-  const [syncing, setSyncing]     = useState(false);
-  const [syncMsg, setSyncMsg]     = useState('');
+  const [pendingCount, setPendingCount]   = useState(0);
+  const [syncing, setSyncing]             = useState(false);
+  const [syncMsg, setSyncMsg]             = useState('');
+  const [showChangePwd, setShowChangePwd] = useState(false);
 
   async function syncToLocal() {
     setSyncing(true);
@@ -176,9 +178,13 @@ export default function VetDashboard() {
             </p>
           )}
 
+          <button onClick={() => setShowChangePwd(true)} style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.75)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500, marginBottom: '0.4rem' }}>
+            🔑 Change Password
+          </button>
           <button onClick={handleLogout} style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.85)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500 }}>
             Sign out
           </button>
+          {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
         </div>
       </aside>
 
