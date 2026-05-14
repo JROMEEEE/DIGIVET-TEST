@@ -595,10 +595,9 @@ function OwnersTab({ refs }) {
   const { rows, loading } = useVetTable('owner_table');
   const [search, setSearch]         = useState('');
   const [sending, setSending]       = useState({});
-  const [provisioning, setProvision]   = useState(false);
+  const [provisioning, setProvision]    = useState(false);
   const [provisionMsg, setProvisionMsg] = useState('');
   const [showConfirm, setShowConfirm]   = useState(false);
-  const [showConfirm, setShowConfirm]     = useState(false);
   const { editing, setEditing, deleting, setDeleting, saveEdit, confirmDelete } = useEditDelete('owner_table', 'owner_id');
   const [credStatus, setCredStatus] = useState(null);
 
