@@ -595,8 +595,10 @@ function OwnersTab({ refs }) {
   const { rows, loading } = useVetTable('owner_table');
   const [search, setSearch]         = useState('');
   const [sending, setSending]       = useState({});
-  const [provisioning, setProvision] = useState(false);
+  const [provisioning, setProvision]   = useState(false);
   const [provisionMsg, setProvisionMsg] = useState('');
+  const [showConfirm, setShowConfirm]   = useState(false);
+  const [showConfirm, setShowConfirm]     = useState(false);
   const { editing, setEditing, deleting, setDeleting, saveEdit, confirmDelete } = useEditDelete('owner_table', 'owner_id');
   const [credStatus, setCredStatus] = useState(null);
 
@@ -607,18 +609,16 @@ useEffect(() => {
 }, []);
 
 
-  async function runProvision() {
-    const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
-    const msg = unsent > 0
-      ? `Send credentials to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received them?\n\nThis will generate new passwords and email them to each owner.`
-      : `All owners with emails have already received their credentials.\n\nNo new emails will be sent.`;
-    if (!window.confirm(msg)) return;
+  // Opens the styled confirmation modal
+  function runProvision() { setShowConfirm(true); }
 
+  // Called when vet clicks Confirm in the modal
+  async function doProvision() {
+    setShowConfirm(false);
     setProvision(true);
     setProvisionMsg('');
     try {
-      const res  = await authFetch('/api/credentials/send-now', { method: 'POST' });
-      const data = await res.json();
+      await authFetch('/api/credentials/send-now', { method: 'POST' });
       setProvisionMsg('✓ Provisioning running in background — credentials will be sent shortly');
     } catch {
       setProvisionMsg('✗ Failed to start provisioning');
@@ -774,6 +774,23 @@ useEffect(() => {
 
       {editing  && <GenericEditModal title="Owner" fields={[{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }]} initialValues={editing} onSave={saveEdit} onClose={() => setEditing(null)} />}
       {deleting && <DeleteConfirm name={deleting.owner_name} onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />}
+
+      {showConfirm && (
+        <ConfirmModal
+          icon="📧"
+          title="Send Credentials"
+          confirmColor={MAROON}
+          confirmLabel="Yes, Send Credentials"
+          message={(() => {
+            const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
+            return unsent > 0
+              ? `This will send login credentials to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received them.\n\nNew passwords will be generated and emailed to each owner.`
+              : `All owners with emails have already received their credentials.\n\nNo new emails will be sent.`;
+          })()}
+          onConfirm={doProvision}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </>
   );
 }
@@ -1471,6 +1488,38 @@ function DeleteConfirm({ name, onConfirm, onCancel }) {
           <button disabled={deleting} onClick={async () => { setDeleting(true); await onConfirm(); }} style={{ flex: 1, background: deleting ? '#b0b0b0' : '#dc2626', border: 'none', borderRadius: '8px', padding: '0.75rem', fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', color: '#fff' }}>
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Reusable confirmation modal
+function ConfirmModal({ icon, title, message, confirmLabel, confirmColor = MAROON, onConfirm, onCancel }) {
+  const [loading, setLoading] = useState(false);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background: '#fff', borderRadius: '18px', width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+        <div style={{ background: confirmColor, padding: '1.5rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.2rem', marginBottom: '0.4rem' }}>{icon}</div>
+          <h2 style={{ color: '#fff', fontWeight: 800, margin: 0, fontSize: '1.05rem' }}>{title}</h2>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <p style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.7, margin: '0 0 1.5rem', textAlign: 'center', whiteSpace: 'pre-line' }}>
+            {message}
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={onCancel}
+              style={{ flex: 1, background: '#f3f4f6', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', cursor: 'pointer', color: '#555', fontWeight: 600 }}>
+              Cancel
+            </button>
+            <button disabled={loading} onClick={async () => { setLoading(true); await onConfirm(); setLoading(false); }}
+              style={{ flex: 2, background: loading ? '#b0b0b0' : confirmColor, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem', fontSize: '0.9rem', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+              {loading ? 'Processing…' : confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>
