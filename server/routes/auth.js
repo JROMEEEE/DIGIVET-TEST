@@ -307,33 +307,25 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     }
 
     // Generate a secure readable password
-    const { generatePassword } = require('./authHelpers');
+    const { generatePassword, upsertSupabaseUser, sendCredentialsEmail } = require('./authHelpers');
     const password = generatePassword();
 
-    // Create or update their Supabase auth account
-    const { data: listData } = await supabase.auth.admin.listUsers();
-    const existing = listData?.users?.find(u => u.email?.toLowerCase() === owner.email.toLowerCase());
+    // Create or update Supabase auth account — avoids the slow listUsers() scan
+    await upsertSupabaseUser(supabase, owner.email.toLowerCase(), password, {
+      full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id,
+    });
 
-    if (existing) {
-      await supabase.auth.admin.updateUserById(existing.id, {
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id },
-      });
-    } else {
-      await supabase.auth.admin.createUser({
-        email: owner.email,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id },
-      });
-    }
+    // Mark as sent in the DB now (account exists, credentials are ready)
+    await supabase.from('owner_table')
+      .update({ credentials_sent: true })
+      .eq('owner_id', owner.owner_id);
 
-    // Send credentials via email
-    const { sendCredentialsEmail } = require('./authHelpers');
-    await sendCredentialsEmail(owner.email, owner.owner_name, password);
-
+    // Respond immediately — email sends in the background so the UI isn't blocked
     res.json({ success: true, message: `Credentials sent to ${owner.email}` });
+
+    // Fire-and-forget: QR generation + SMTP runs after the response is flushed
+    sendCredentialsEmail(owner.email, owner.owner_name, password)
+      .catch(err => console.error('send-owner-credentials email error:', err.message));
   } catch (err) {
     console.error('send-owner-credentials error:', err);
     res.status(500).json({ error: err.message || 'Server error' });
