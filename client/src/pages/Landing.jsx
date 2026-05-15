@@ -34,10 +34,6 @@ export default function Landing() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <span style={{ color: '#555', fontSize: '0.9rem' }}>Lipa City Veterinary Office</span>
-          <Link to="/status" style={{
-            background: MAROON, color: '#fff', padding: '0.5rem 1.25rem',
-            borderRadius: '8px', textDecoration: 'none', fontWeight: 600, fontSize: '0.88rem',
-          }}>System Status</Link>
         </div>
       </nav>
 
@@ -131,7 +127,6 @@ export default function Landing() {
         color: '#aaa', fontSize: '0.8rem', background: '#fff',
       }}>
         <span>DIGIVET Online · Lipa City Veterinary Office</span>
-        <Link to="/status" style={{ color: '#aaa', textDecoration: 'none' }}>System Status</Link>
       </footer>
     </div>
   );

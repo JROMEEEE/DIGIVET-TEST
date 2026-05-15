@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-const TIMEOUT_MS  = 30 * 60 * 1000; // 30 minutes inactive → auto logout
-const WARNING_MS  = 28 * 60 * 1000; // show warning at 28 minutes
+const TIMEOUT_MS  = 60 * 60 * 1000; // 60 minutes inactive → auto logout
+const WARNING_MS  = 57 * 60 * 1000; // show warning at 57 minutes (3 min before logout)
 const EVENTS      = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
 
 export default function useSessionTimeout(onLogout) {

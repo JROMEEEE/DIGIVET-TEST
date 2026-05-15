@@ -83,27 +83,8 @@ export default function VetDashboard() {
   const { showWarning, secondsLeft, stayLoggedIn } = useSessionTimeout(handleLogout);
 
   const [pendingCount, setPendingCount]   = useState(0);
-  const [syncing, setSyncing]             = useState(false);
-  const [syncMsg, setSyncMsg]             = useState('');
   const [showChangePwd, setShowChangePwd] = useState(false);
-
-  async function syncToLocal() {
-    setSyncing(true);
-    setSyncMsg('');
-    try {
-      const res  = await authFetch('/api/sync/to-local', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        setSyncMsg(`✓ Synced ${data.totalSynced} records at ${new Date(data.syncedAt).toLocaleTimeString()}`);
-      } else {
-        setSyncMsg('✗ ' + (data.error || 'Sync failed'));
-      }
-    } catch {
-      setSyncMsg('✗ Cannot reach local database');
-    } finally {
-      setSyncing(false);
-    }
-  }
+  const [showAcctModal, setShowAcctModal] = useState(false);
 
   useEffect(() => {
     // Poll pending request count every 30 seconds for the badge
@@ -121,164 +102,393 @@ export default function VetDashboard() {
   }, []);
 
   const navItems = [
-    { id: 'overview',      icon: '⊞',  label: 'Overview' },
-    { id: 'owners',        icon: '👤', label: 'Pet Owners' },
-    { id: 'records',       icon: '📋', label: 'Records' },
-    { id: 'approvals',     icon: '✅', label: 'Edit Approvals', badge: pendingCount },
-    { id: 'approval_ids',  icon: '🆔', label: 'Approval IDs' },
-    { id: 'veterinarians', icon: '⚕️', label: 'Veterinarians' },
+    { id: 'overview',      code: 'OV', label: 'Overview' },
+    { id: 'owners',        code: 'OW', label: 'Pet Owners' },
+    { id: 'records',       code: 'RC', label: 'Records' },
+    { id: 'approvals',     code: 'AP', label: 'Edit Approvals', badge: pendingCount },
+    { id: 'approval_ids',  code: 'ID', label: 'Approval IDs' },
+    { id: 'veterinarians', code: 'VT', label: 'Veterinarians' },
   ];
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#f5f6fa' }}>
+  const PAGE_META = {
+    overview:      { title: 'Overview',       crumb: 'Vet Portal · Dashboard' },
+    owners:        { title: 'Pet Owners',      crumb: 'Vet Portal · Pet Owners' },
+    records:       { title: 'Records',         crumb: 'Vet Portal · Records' },
+    approvals:     { title: 'Edit Approvals',  crumb: 'Vet Portal · Approvals' },
+    approval_ids:  { title: 'Approval IDs',    crumb: 'Vet Portal · Approval IDs' },
+    veterinarians: { title: 'Veterinarians',   crumb: 'Vet Portal · Veterinarians' },
+  };
+  const meta = PAGE_META[activeTab] ?? { title: 'Dashboard', crumb: 'Vet Portal' };
 
-      <aside style={{ width: 230, background: MAROON, display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 10 }}>
-        <div style={{ padding: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.15)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.75rem' }}>DV</div>
-            <div>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.9rem', lineHeight: 1.1 }}>DIGIVET</div>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.4px', textTransform: 'uppercase' }}>Vet Portal</div>
-            </div>
+  function initials(name) {
+    if (!name) return 'V';
+    return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '248px 1fr', minHeight: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+
+      {/* ── Sidebar ── */}
+      <aside style={{ background: MAROON, display: 'flex', flexDirection: 'column', padding: '20px 14px', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
+
+        {/* Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 6px 18px', borderBottom: '1px solid rgba(255,255,255,0.12)', marginBottom: 18 }}>
+          <div style={{ width: 36, height: 36, background: '#fff', borderRadius: '6px', display: 'grid', placeItems: 'center', color: MAROON, fontWeight: 800, fontSize: '0.85rem', flexShrink: 0 }}>DV</div>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+            <span style={{ fontWeight: 700, color: '#fff', fontSize: '1rem', letterSpacing: '0.02em' }}>DIGIVET</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Online System</span>
           </div>
         </div>
 
-        <nav style={{ flex: 1, padding: '0.75rem 0', overflowY: 'auto' }}>
-          {navItems.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: '0.65rem',
-              padding: '0.65rem 1.25rem',
-              background: activeTab === tab.id ? 'rgba(255,255,255,0.15)' : 'transparent',
-              border: 'none', borderLeft: activeTab === tab.id ? '3px solid #fff' : '3px solid transparent',
-              color: activeTab === tab.id ? '#fff' : 'rgba(255,255,255,0.7)',
-              fontSize: '0.86rem', fontWeight: activeTab === tab.id ? 700 : 400,
-              cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-            }}>
-              <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
-              <span style={{ flex: 1 }}>{tab.label}</span>
-              {tab.badge > 0 && (
-                <span style={{ background: '#ef4444', color: '#fff', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800, padding: '1px 7px', minWidth: 18, textAlign: 'center' }}>
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Nav */}
+        <nav style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.55)', padding: '8px 10px' }}>Workspace</div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {navItems.map(tab => {
+              const active = activeTab === tab.id;
+              return (
+                <li key={tab.id}>
+                  <button onClick={() => setActiveTab(tab.id)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                    background: active ? '#fff' : 'transparent',
+                    border: 0, borderRadius: 8,
+                    color: active ? MAROON : 'rgba(255,255,255,0.85)',
+                    fontSize: '0.9rem', fontWeight: active ? 600 : 400,
+                    padding: '9px 10px', cursor: 'pointer', textAlign: 'left',
+                    fontFamily: 'inherit', transition: 'background 0.15s, color 0.15s',
+                  }}
+                    onMouseOver={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                    onMouseOut={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{
+                      width: 26, height: 26, borderRadius: 6, display: 'grid', placeItems: 'center',
+                      background: active ? MAROON_LIGHT : 'rgba(255,255,255,0.1)',
+                      color: active ? MAROON : 'rgba(255,255,255,0.85)',
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', flexShrink: 0,
+                    }}>{tab.code}</span>
+                    <span style={{ flex: 1 }}>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, fontSize: '0.65rem', fontWeight: 800, padding: '1px 7px', minWidth: 18, textAlign: 'center' }}>
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
-        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: 30, height: 30, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.75rem', flexShrink: 0 }}>
-              {fullName.charAt(0).toUpperCase()}
-            </div>
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ color: '#fff', fontSize: '0.82rem', fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName}</div>
-              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>Veterinarian</div>
-            </div>
-          </div>
-          <button onClick={() => setShowChangePwd(true)} style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.75)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500, marginBottom: '0.4rem' }}>
-            🔑 Change Password
-          </button>
-          <button onClick={handleLogout} style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: 'rgba(255,255,255,0.85)', padding: '0.5rem', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 500 }}>
-            Sign out
-          </button>
-          {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
-      {showWarning && <SessionWarning secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={handleLogout} />}
+        {/* Footer */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 999, padding: '2px 8px' }}>Online</span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.04em' }}>v1.0.0</span>
         </div>
       </aside>
 
-      <main style={{ marginLeft: 230, flex: 1, padding: '2rem 2.5rem', minHeight: '100vh' }}>
-        <DbStatusBar />
-        {activeTab === 'overview'      && <OverviewTab setActiveTab={setActiveTab} refs={refs} />}
-        {activeTab === 'owners'        && <OwnersTab refs={refs} />}
-        {activeTab === 'records'       && <RecordsTab refs={refs} />}
-        {activeTab === 'approvals'     && <PendingApprovalsTab refs={refs} onReviewed={() => setPendingCount(c => Math.max(0, c - 1))} />}
-        {activeTab === 'approval_ids'  && <ApprovalIdsTab refs={refs} />}
-        {activeTab === 'veterinarians' && <VeterinariansTab />}
-      </main>
+      {/* ── Main ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f5f6fa' }}>
+
+        {/* Topbar */}
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '18px 28px', position: 'sticky', top: 0, zIndex: 5 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: 600, margin: 0, color: '#111' }}>{meta.title}</h1>
+            <span style={{ fontSize: '0.8rem', color: '#9ca3af', letterSpacing: '0.02em' }}>{meta.crumb}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <DbStatusBar />
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#6b7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</span>
+            <button onClick={() => setShowAcctModal(true)}
+              style={{ width: 34, height: 34, borderRadius: '50%', background: MAROON, color: '#fff', border: 0, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+              onMouseOver={e => e.currentTarget.style.background = MAROON_DARK}
+              onMouseOut={e => e.currentTarget.style.background = MAROON}
+            >{initials(fullName)}</button>
+          </div>
+        </header>
+
+        <main style={{ flex: 1, padding: '2rem 2.5rem' }}>
+          {activeTab === 'overview'      && <OverviewTab setActiveTab={setActiveTab} refs={refs} />}
+          {activeTab === 'owners'        && <OwnersTab refs={refs} />}
+          {activeTab === 'records'       && <RecordsTab refs={refs} />}
+          {activeTab === 'approvals'     && <PendingApprovalsTab refs={refs} onReviewed={() => setPendingCount(c => Math.max(0, c - 1))} />}
+          {activeTab === 'approval_ids'  && <ApprovalIdsTab refs={refs} />}
+          {activeTab === 'veterinarians' && <VeterinariansTab />}
+        </main>
+      </div>
+
+      {showChangePwd   && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
+      {showAcctModal   && <VetAccountModal fullName={fullName} onClose={() => setShowAcctModal(false)} onChangePwd={() => { setShowAcctModal(false); setShowChangePwd(true); }} onLogout={handleLogout} />}
+      {showWarning     && <SessionWarning secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={handleLogout} />}
     </div>
   );
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
+const STAT_DEFS = [
+  { key: 'vaccines', label: 'Vaccinations',  desc: 'vaccination records', color: MAROON,    bg: MAROON_LIGHT, icon: '💉' },
+  { key: 'owners',   label: 'Pet Owners',    desc: 'registered owners',   color: '#2563eb', bg: '#eff6ff',    icon: '👤' },
+  { key: 'pets',     label: 'Pets on File',  desc: 'in the registry',     color: '#16a34a', bg: '#f0fdf4',    icon: '🐾' },
+  { key: 'vets',     label: 'Veterinarians', desc: 'active vets',         color: '#d97706', bg: '#fffbeb',    icon: '⚕️' },
+];
+
+const MODULES = [
+  { id: 'owners',        emoji: '👤', name: 'Pet Owners',    desc: 'Manage owner records'  },
+  { id: 'records',       emoji: '📋', name: 'Records',       desc: 'Browse by barangay'    },
+  { id: 'approvals',     emoji: '✅', name: 'Approvals',     desc: 'Review edit requests'  },
+  { id: 'approval_ids',  emoji: '🆔', name: 'Approval IDs',  desc: 'Issued ID codes'       },
+  { id: 'veterinarians', emoji: '⚕️', name: 'Veterinarians', desc: 'Vet accounts & access' },
+];
+
+function formatDate() {
+  return new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 function OverviewTab({ setActiveTab, refs }) {
-  const { rows: owners, loading }    = useVetTable('owner_table');
-  const { rows: pets }      = useVetTable('pet_table');
-  const { rows: vaccines }  = useVetTable('vaccine_table');
-  const { rows: approvals } = useVetTable('approval_id_table');
-  const { rows: sessions }  = useVetTable('drive_session_table');
-  const { rows: barangays } = useVetTable('barangay_table');
-  const { rows: vets }      = useVetTable('vet_table');
+  const { rows: owners,   loading: lo } = useVetTable('owner_table');
+  const { rows: pets,     loading: lp } = useVetTable('pet_table');
+  const { rows: vaccines, loading: lv } = useVetTable('vaccine_table');
+  const { rows: vets                  } = useVetTable('vet_table');
+  const [connOk, setConnOk]             = useState(null);
+
+  const loading = lo || lp || lv;
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/status`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setConnOk(d?.checks?.supabase_connection?.ok === true))
+      .catch(() => setConnOk(false));
+  }, []);
 
   const stats = {
-    owners:    owners.filter(r => !r.deleted_at).length,
-    pets:      pets.filter(r => !r.deleted_at).length,
-    vaccines:  vaccines.filter(r => !r.deleted_at).length,
-    approvals: approvals.length,
-    sessions:  sessions.length,
-    barangays: barangays.length,
-    vets:      vets.length,
+    vaccines: vaccines.filter(r => !r.deleted_at).length,
+    owners:   owners.filter(r => !r.deleted_at).length,
+    pets:     pets.filter(r => !r.deleted_at).length,
+    vets:     vets.length,
   };
 
-  const cards = [
-    { label: 'Pet Owners',    key: 'owners',    icon: '👤', tab: 'records',  color: '#3b82f6' },
-    { label: 'Pets on File',  key: 'pets',      icon: '🐾', tab: 'records',  color: MAROON },
-    { label: 'Vaccinations',  key: 'vaccines',  icon: '💉', tab: 'records',  color: '#10b981' },
-    { label: 'Approval IDs',  key: 'approvals', icon: '🆔', tab: 'approval_ids', color: '#f59e0b' },
-    { label: 'Drive Sessions',key: 'sessions',  icon: '📍', tab: 'drive_sessions', color: '#8b5cf6' },
-    { label: 'Barangays',     key: 'barangays', icon: '🏘️', tab: 'barangays',      color: '#06b6d4' },
-    { label: 'Veterinarians', key: 'vets',      icon: '⚕️', tab: 'veterinarians',  color: '#ec4899' },
-  ];
-
-  const recentVaccines = vaccines
+  // Recent vaccinations — last 8 by vaccine_id
+  const recentVacc = vaccines
     .filter(r => !r.deleted_at)
     .sort((a, b) => b.vaccine_id - a.vaccine_id)
+    .slice(0, 8);
+
+  // Top barangays by vaccination count (via pet → owner → barangay)
+  const petOwnerMap = Object.fromEntries(pets.map(p => [p.pet_id, p.owner_id]));
+  const ownerBrgyMap = Object.fromEntries(owners.map(o => [o.owner_id, o.barangay_id]));
+  const brgyCount = {};
+  vaccines.filter(v => !v.deleted_at).forEach(v => {
+    const brgyId = ownerBrgyMap[petOwnerMap[v.pet_id]];
+    if (brgyId) brgyCount[brgyId] = (brgyCount[brgyId] ?? 0) + 1;
+  });
+  const topBarangays = Object.entries(brgyCount)
+    .map(([id, count]) => ({ name: refs.barangayMap[id] ?? `Barangay #${id}`, count }))
+    .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
-  return (
-    <>
-      {owners.length === 0 && !loading && <DataError />}
-      <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>Dashboard Overview</h1>
-        <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>All records across the DIGIVET system.</p>
-      </div>
+  const MUTED  = '#6b7280';
+  const BORDER = '#e5e7eb';
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-        {cards.map(({ label, key, icon, tab, color }) => (
-          <div key={key} onClick={() => setActiveTab(tab)}
-            style={{ background: '#fff', borderRadius: '12px', padding: '1.25rem 1.5rem', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', cursor: 'pointer' }}
-            onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
-            onMouseOut={e => e.currentTarget.style.boxShadow = '0 1px 8px rgba(0,0,0,0.05)'}
+  // Shared panel style
+  const panel = { background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' };
+  const panelHead = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '14px 18px 12px', borderBottom: `1px solid ${BORDER}` };
+  const panelTitle = { fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: '#111' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+
+      {owners.length === 0 && !loading && <DataError />}
+
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '1.55rem', fontWeight: 700, color: '#111', margin: '0 0 2px', letterSpacing: '-0.02em' }}>Overview</h1>
+          <p style={{ fontSize: '0.82rem', color: MUTED, margin: 0 }}>{formatDate()}</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600,
+            padding: '5px 12px', borderRadius: 999, border: `1px solid ${connOk ? '#86efac' : BORDER}`,
+            background: connOk ? '#f0fdf4' : '#f9fafb', color: connOk ? '#16a34a' : MUTED,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+            {connOk === null ? 'Checking…' : connOk ? 'Supabase connected' : 'Supabase offline'}
+          </span>
+        </div>
+      </header>
+
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        {STAT_DEFS.map(({ key, label, desc, color, bg, icon }) => (
+          <div key={key} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, padding: '20px 20px 18px', display: 'flex', flexDirection: 'column', gap: 2, transition: 'box-shadow 0.15s, transform 0.1s' }}
+            onMouseOver={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.07)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#888', fontWeight: 600, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color }}>{stats[key] ?? '…'}</div>
-              </div>
-              <span style={{ fontSize: '1.4rem' }}>{icon}</span>
+            <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, background: color, borderRadius: '14px 0 0 14px' }} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: MUTED }}>{label}</span>
+              <span style={{ width: 34, height: 34, borderRadius: 9, background: bg, display: 'grid', placeItems: 'center', fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
             </div>
+            <span style={{ fontSize: '2.4rem', fontWeight: 800, color, lineHeight: 1, letterSpacing: '-0.03em' }}>
+              {loading ? '—' : stats[key].toLocaleString()}
+            </span>
+            <span style={{ fontSize: '0.78rem', color: MUTED, marginTop: 4 }}>{desc}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)' }}>
-        <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111', margin: '0 0 1rem' }}>Recent Vaccinations</h2>
-        {recentVaccines.length === 0 ? (
-          <p style={{ color: '#aaa', fontSize: '0.88rem', margin: 0 }}>No vaccination records yet.</p>
-        ) : (
-          <DataTable
-            columns={['Pet', 'Veterinarian', 'Date', 'Details', 'Type']}
-            rows={recentVaccines.map(r => [
-              refs.petMap[r.pet_id]  ?? `Pet #${r.pet_id}`,
-              refs.vetMap[r.vet_id]  ?? `Vet #${r.vet_id}`,
-              r.vaccine_date ? new Date(r.vaccine_date).toLocaleDateString() : '—',
-              r.vaccine_details || '—',
-              r.is_office_visit ? 'Office Visit' : 'Barangay Drive',
-            ])}
-          />
-        )}
+      {/* Quick actions */}
+      <section>
+        <p style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: MUTED, margin: '0 0 8px' }}>Quick actions</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+          {MODULES.map(({ id, emoji, name, desc }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10, padding: 16, background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', width: '100%', transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.1s' }}
+              onMouseOver={e => { e.currentTarget.style.borderColor = MAROON; e.currentTarget.style.boxShadow = '0 4px 16px rgba(122,31,43,0.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+              onMouseOut={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
+            >
+              <span style={{ width: 42, height: 42, borderRadius: 11, background: MAROON_LIGHT, display: 'grid', placeItems: 'center', fontSize: '1.2rem', flexShrink: 0 }}>{emoji}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111' }}>{name}</span>
+                <span style={{ fontSize: '0.74rem', color: MUTED, lineHeight: 1.4 }}>{desc}</span>
+              </span>
+              <span style={{ alignSelf: 'flex-end', fontSize: '0.85rem', color: '#9ca3af', marginTop: 'auto' }}>→</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Main content grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'start' }}>
+
+        {/* Recent Vaccinations panel */}
+        <section style={panel}>
+          <div style={panelHead}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '1.1rem' }}>💉</span>
+              <h3 style={panelTitle}>Recent Vaccinations</h3>
+            </div>
+          </div>
+          {loading ? (
+            <div style={{ padding: '2rem', display: 'flex', justifyContent: 'center' }}>
+              <span style={{ width: 24, height: 24, border: `3px solid ${MAROON_LIGHT}`, borderTopColor: MAROON, borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+            </div>
+          ) : recentVacc.length === 0 ? (
+            <div style={{ padding: '2rem 1.25rem', textAlign: 'center', color: MUTED }}>
+              <div style={{ fontSize: '2rem', marginBottom: 8 }}>💉</div>
+              <p style={{ fontWeight: 600, fontSize: '0.9rem', margin: '0 0 4px', color: '#111' }}>No vaccination records yet</p>
+              <p style={{ fontSize: '0.82rem', margin: 0 }}>Records will appear here once vaccinations are added.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                      {['#', 'Pet', 'Owner', 'Date', 'Vaccine', 'Type'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '0.67rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: MUTED, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentVacc.map((v, i) => {
+                      const petName   = refs.petMap[v.pet_id]   ?? `Pet #${v.pet_id}`;
+                      const ownerName = (() => {
+                        const pet = pets.find(p => p.pet_id === v.pet_id);
+                        return pet ? (refs.ownerMap[pet.owner_id] ?? `Owner #${pet.owner_id}`) : '—';
+                      })();
+                      return (
+                        <tr key={v.vaccine_id} style={{ borderBottom: i < recentVacc.length - 1 ? `1px solid #f5f6fa` : 'none' }}
+                          onMouseOver={e => e.currentTarget.style.background = '#f5f6fa'}
+                          onMouseOut={e => e.currentTarget.style.background = ''}
+                        >
+                          <td style={{ padding: '10px 14px', color: MUTED, fontSize: '0.78rem', width: 32 }}>{i + 1}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{petName}</td>
+                          <td style={{ padding: '10px 14px', color: MUTED }}>{ownerName}</td>
+                          <td style={{ padding: '10px 14px', color: MUTED, whiteSpace: 'nowrap' }}>{v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.72rem', color: MAROON, background: MAROON_LIGHT, padding: '3px 8px', borderRadius: 5 }}>{v.vaccine_details || '—'}</span>
+                          </td>
+                          <td style={{ padding: '10px 14px', color: MUTED, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{v.is_office_visit ? 'Office' : 'Drive'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '11px 18px', borderTop: `1px solid ${BORDER}` }}>
+                <button onClick={() => setActiveTab('records')} style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.82rem', fontWeight: 600, color: MAROON, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onMouseOver={e => e.currentTarget.style.opacity = '0.7'}
+                  onMouseOut={e => e.currentTarget.style.opacity = '1'}
+                >View all records →</button>
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Right column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Top Barangays */}
+          <section style={panel}>
+            <div style={panelHead}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.1rem' }}>🏘️</span>
+                <h3 style={panelTitle}>Top Barangays</h3>
+              </div>
+            </div>
+            {loading ? (
+              <div style={{ padding: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+                <span style={{ width: 20, height: 20, border: `3px solid ${MAROON_LIGHT}`, borderTopColor: MAROON, borderRadius: '50%', display: 'inline-block' }} />
+              </div>
+            ) : topBarangays.length === 0 ? (
+              <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.82rem', color: MUTED, margin: 0 }}>No barangay data yet.</p>
+              </div>
+            ) : (
+              <ol style={{ listStyle: 'none', margin: 0, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {topBarangays.map((b, i) => {
+                  const pct = Math.round((b.count / topBarangays[0].count) * 100);
+                  return (
+                    <li key={b.name} style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', inset: 0, width: `${pct}%`, background: MAROON_LIGHT, borderRadius: 9, pointerEvents: 'none', transition: 'width 0.6s ease' }} />
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: MUTED, position: 'relative' }}>{i + 1}</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', position: 'relative' }}>{b.name}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: MAROON, whiteSpace: 'nowrap', position: 'relative' }}>{b.count.toLocaleString()}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+
+          {/* Sync status */}
+          <section style={panel}>
+            <div style={panelHead}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.1rem' }}>🔄</span>
+                <h3 style={panelTitle}>Sync Status</h3>
+              </div>
+              <span style={{
+                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
+                padding: '3px 10px', borderRadius: 999, border: `1px solid ${connOk ? '#86efac' : BORDER}`,
+                background: connOk ? '#f0fdf4' : '#f9fafb', color: connOk ? '#16a34a' : MUTED,
+              }}>
+                {connOk === null ? '…' : connOk ? 'Connected' : 'Offline'}
+              </span>
+            </div>
+            <div style={{ padding: '12px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                <span style={{ color: MUTED, fontWeight: 500 }}>Database</span>
+                <span style={{ fontWeight: 600, color: '#111' }}>{connOk ? 'Supabase Online' : 'Supabase Offline'}</span>
+              </div>
+            </div>
+          </section>
+
+        </div>
       </div>
-    </>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
 }
 
@@ -372,82 +582,80 @@ function RecordsTab({ refs }) {
     window.location.reload();
   }
 
+  const BORDER = '#e5e7eb';
+  const MUTED  = '#6b7280';
+
   const btnEdit = (table, pk, row, fields, title) => (
     <button onClick={e => { e.stopPropagation(); setModal({ table, pk, row, fields, title }); }}
-      style={{ background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '5px', padding: '0.25rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginRight: 4 }}>
+      style={{ background: '#f9fafb', border: `1px solid ${BORDER}`, color: '#374151', borderRadius: 6, padding: '3px 9px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
       Edit
     </button>
   );
   const btnDel = (table, pk, name, row) => (
     <button onClick={e => { e.stopPropagation(); setDelModal({ table, pk, name, row }); }}
-      style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '5px', padding: '0.25rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+      style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 6, padding: '3px 9px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
       Delete
     </button>
   );
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Page header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>📋 Records</h1>
-        <p style={{ color: '#888', margin: 0, fontSize: '0.875rem' }}>Grouped by barangay — filter by drive session or search to narrow results.</p>
-      </div>
+      <header>
+        <h1 style={{ fontSize: '1.55rem', fontWeight: 700, color: '#111', margin: '0 0 2px', letterSpacing: '-0.02em' }}>Records</h1>
+        <p style={{ color: MUTED, margin: 0, fontSize: '0.82rem' }}>
+          {filteredOwners.length} owner{filteredOwners.length !== 1 ? 's' : ''} · grouped by barangay
+        </p>
+      </header>
 
       {/* Filter bar */}
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
-        <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
-          <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.9rem', pointerEvents: 'none' }}>🔍</span>
+      <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: 180, position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.85rem', pointerEvents: 'none' }}>🔍</span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners, pets, vaccines…"
-            style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e8e8e8', borderRadius: '8px', padding: '0.6rem 0.9rem 0.6rem 2.2rem', fontSize: '0.875rem', outline: 'none', background: '#fafafa', color: '#333' }} />
+            style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${BORDER}`, borderRadius: 8, padding: '0.5rem 0.9rem 0.5rem 2rem', fontSize: '0.85rem', outline: 'none', background: '#f9fafb', color: '#111', fontFamily: 'inherit' }} />
         </div>
-
         <select value={filterBrgy} onChange={e => { setFilterBrgy(e.target.value); setFilterSession(''); }}
-          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer', color: '#333' }}>
-          <option value="">🏘️ All Barangays</option>
+          style={{ border: `1.5px solid ${BORDER}`, borderRadius: 8, padding: '0.5rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: '#fff', cursor: 'pointer', color: '#111', fontFamily: 'inherit' }}>
+          <option value="">All Barangays</option>
           {barangays.slice().sort((a, b) => a.barangay_name.localeCompare(b.barangay_name)).map(b => {
             const count = owners.filter(o => !o.deleted_at && String(o.barangay_id) === String(b.barangay_id)).length;
             return <option key={b.barangay_id} value={b.barangay_id}>{b.barangay_name} ({count})</option>;
           })}
         </select>
-
         <select value={filterSession} onChange={e => setFilterSession(e.target.value)} disabled={!filterBrgy}
-          style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: filterBrgy ? '#fff' : '#f5f5f5', cursor: filterBrgy ? 'pointer' : 'not-allowed', color: filterBrgy ? '#333' : '#bbb' }}>
-          <option value="">{filterBrgy ? '📍 All Sessions' : '📍 Select a barangay first'}</option>
+          style={{ border: `1.5px solid ${BORDER}`, borderRadius: 8, padding: '0.5rem 0.9rem', fontSize: '0.85rem', outline: 'none', background: filterBrgy ? '#fff' : '#f5f6fa', cursor: filterBrgy ? 'pointer' : 'not-allowed', color: filterBrgy ? '#111' : '#bbb', fontFamily: 'inherit' }}>
+          <option value="">{filterBrgy ? 'All Sessions' : 'Select a barangay first'}</option>
           {visibleSessions.map(s => {
-            const label     = s.session_date ? new Date(s.session_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : `Session #${s.session_id}`;
-            const doseCount = vaccines.filter(v => String(v.session_id) === String(s.session_id)).length;
-            return (
-              <option key={s.session_id} value={s.session_id}>
-                {label} ({doseCount} dose{doseCount !== 1 ? 's' : ''})
-              </option>
-            );
+            const label = s.session_date ? new Date(s.session_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : `Session #${s.session_id}`;
+            const doses = vaccines.filter(v => String(v.session_id) === String(s.session_id)).length;
+            return <option key={s.session_id} value={s.session_id}>{label} ({doses} dose{doses !== 1 ? 's' : ''})</option>;
           })}
         </select>
-
         {(filterBrgy || filterSession || search) && (
-          <button onClick={() => { setFilterBrgy(''); setFilterSession(''); setSearch(''); }}
-            style={{ background: 'transparent', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.82rem', cursor: 'pointer', color: '#888', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            ✕ Clear
-          </button>
-        )}
-
-        {(filterBrgy || filterSession || search) && (
-          <span style={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'nowrap' }}>
-            {filteredOwners.length} of {owners.filter(o => !o.deleted_at).length} owners
-          </span>
+          <>
+            <span style={{ fontSize: '0.78rem', color: MUTED }}>{filteredOwners.length} of {owners.filter(o => !o.deleted_at).length} owners</span>
+            <button onClick={() => { setFilterBrgy(''); setFilterSession(''); setSearch(''); }}
+              style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '0.45rem 0.9rem', fontSize: '0.8rem', cursor: 'pointer', color: MUTED, fontFamily: 'inherit', fontWeight: 600 }}>
+              ✕ Clear
+            </button>
+          </>
         )}
       </div>
 
+      {/* Records list */}
       {loading ? (
-        <p style={{ color: '#bbb', textAlign: 'center', padding: '4rem', fontSize: '0.9rem' }}>Loading records…</p>
+        <div style={{ padding: '4rem', display: 'flex', justifyContent: 'center' }}>
+          <span style={{ width: 24, height: 24, border: `3px solid ${MAROON_LIGHT}`, borderTopColor: MAROON, borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+        </div>
       ) : barangayIds.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: '#bbb' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔍</div>
-          <p style={{ fontWeight: 600, color: '#555', margin: '0 0 0.3rem' }}>No records found</p>
-          <p style={{ fontSize: '0.85rem', margin: 0 }}>Try adjusting your filters or search term.</p>
+        <div style={{ textAlign: 'center', padding: '4rem', color: MUTED }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
+          <p style={{ fontWeight: 600, fontSize: '0.9rem', margin: '0 0 4px', color: '#111' }}>No records found</p>
+          <p style={{ fontSize: '0.82rem', margin: 0 }}>Try adjusting your filters or search term.</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {barangayIds.map(brgyId => {
             const brgyName   = refs.barangayMap[brgyId] ?? `Barangay #${brgyId}`;
             const brgyOwners = byBarangay[brgyId];
@@ -455,62 +663,57 @@ function RecordsTab({ refs }) {
             const brgyOpen   = expanded[brgyKey] !== false;
 
             return (
-              <div key={brgyId} style={{ background: '#fff', borderRadius: '14px', border: '1px solid #eee', overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.06)' }}>
+              <div key={brgyId} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
 
-                {/* Barangay header — subtle accent style */}
-                <div
-                  onClick={() => toggle(brgyKey)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', borderLeft: `4px solid ${MAROON}`, background: brgyOpen ? MAROON_LIGHT : '#fafafa', cursor: 'pointer', borderBottom: brgyOpen ? `1px solid ${MAROON}20` : 'none', transition: 'background 0.15s' }}
+                {/* Barangay panel head */}
+                <div onClick={() => toggle(brgyKey)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: brgyOpen ? `1px solid ${BORDER}` : 'none', cursor: 'pointer', background: brgyOpen ? MAROON_LIGHT : '#fff', transition: 'background 0.15s' }}
+                  onMouseOver={e => { if (!brgyOpen) e.currentTarget.style.background = '#f9fafb'; }}
+                  onMouseOut={e => { if (!brgyOpen) e.currentTarget.style.background = brgyOpen ? MAROON_LIGHT : '#fff'; }}
                 >
-                  <span style={{ color: MAROON, fontSize: '1rem' }}>🏘️</span>
-                  <span style={{ fontWeight: 800, color: '#111', fontSize: '0.95rem', flex: 1 }}>{brgyName}</span>
-                  <span style={{ background: MAROON, color: '#fff', borderRadius: '999px', padding: '0.15rem 0.7rem', fontSize: '0.73rem', fontWeight: 700 }}>
+                  <span style={{ fontSize: '0.95rem' }}>🏘️</span>
+                  <span style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem', flex: 1, letterSpacing: '-0.01em' }}>{brgyName}</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: brgyOpen ? MAROON : MUTED, background: brgyOpen ? '#fff' : '#f5f6fa', border: `1px solid ${brgyOpen ? MAROON + '30' : BORDER}`, borderRadius: 999, padding: '2px 10px' }}>
                     {brgyOwners.length} owner{brgyOwners.length !== 1 ? 's' : ''}
                   </span>
-                  <span style={{ color: '#bbb', fontSize: '0.85rem', marginLeft: '0.25rem' }}>{brgyOpen ? '▾' : '▸'}</span>
+                  <span style={{ color: '#bbb', fontSize: '0.8rem', marginLeft: 4 }}>{brgyOpen ? '▾' : '▸'}</span>
                 </div>
 
                 {/* Owners */}
                 {brgyOpen && brgyOwners.map((owner, oi) => {
                   const ownerKey  = `o${owner.owner_id}`;
                   const ownerOpen = expanded[ownerKey];
-                  const ownerPets = (petsByOwner[owner.owner_id] ?? []).filter(p =>
-                    !petIdsInSession || petIdsInSession.has(p.pet_id)
-                  );
+                  const ownerPets = (petsByOwner[owner.owner_id] ?? []).filter(p => !petIdsInSession || petIdsInSession.has(p.pet_id));
 
                   return (
-                    <div key={owner.owner_id} style={{ borderTop: oi > 0 ? '1px solid #f5f5f5' : '1px solid #f0f0f0' }}>
+                    <div key={owner.owner_id} style={{ borderTop: `1px solid ${oi === 0 ? BORDER : '#f5f6fa'}` }}>
 
                       {/* Owner row */}
-                      <div
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', background: ownerOpen ? '#fdf7f8' : '#fff', cursor: 'pointer', transition: 'background 0.1s' }}
-                        onClick={() => toggle(ownerKey)}
-                        onMouseOver={e => { if (!ownerOpen) e.currentTarget.style.background = '#fafafa'; }}
-                        onMouseOut={e => { if (!ownerOpen) e.currentTarget.style.background = '#fff'; }}
+                      <div onClick={() => toggle(ownerKey)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', background: ownerOpen ? '#fdf7f8' : '#fff', cursor: 'pointer', transition: 'background 0.1s' }}
+                        onMouseOver={e => { if (!ownerOpen) e.currentTarget.style.background = '#f9fafb'; }}
+                        onMouseOut={e => { if (!ownerOpen) e.currentTarget.style.background = ownerOpen ? '#fdf7f8' : '#fff'; }}
                       >
-                        {/* Avatar */}
-                        <div style={{ width: 34, height: 34, background: MAROON_LIGHT, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 700, color: MAROON, fontSize: '0.82rem' }}>
+                        <span style={{ width: 32, height: 32, borderRadius: '50%', background: MAROON_LIGHT, color: MAROON, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '0.78rem', flexShrink: 0 }}>
                           {owner.owner_name?.charAt(0).toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, color: '#111', fontSize: '0.9rem' }}>{owner.owner_name}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#888', marginTop: '0.1rem' }}>{owner.contact_number}</div>
-                        </div>
-                        <span style={{ background: ownerPets.length ? '#eef7ee' : '#f5f5f5', color: ownerPets.length ? '#16a34a' : '#aaa', borderRadius: '6px', padding: '0.2rem 0.65rem', fontSize: '0.76rem', fontWeight: 600, marginRight: '0.5rem', whiteSpace: 'nowrap' }}>
-                          🐾 {ownerPets.length} pet{ownerPets.length !== 1 ? 's' : ''}
                         </span>
-                        <div style={{ display: 'flex', gap: '0.35rem' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: '#111', fontSize: '0.88rem' }}>{owner.owner_name}</div>
+                          <div style={{ fontSize: '0.76rem', color: MUTED, marginTop: 1 }}>{owner.contact_number || '—'}</div>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: ownerPets.length ? '#16a34a' : '#bbb', background: ownerPets.length ? '#f0fdf4' : '#f5f6fa', border: `1px solid ${ownerPets.length ? '#86efac' : BORDER}`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                          🐾 {ownerPets.length}
+                        </span>
+                        <div style={{ display: 'flex', gap: 5 }} onClick={e => e.stopPropagation()}>
                           {btnEdit('owner_table', 'owner_id', owner, [{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }], 'Owner')}
                           {btnDel('owner_table', 'owner_id', owner.owner_name, owner)}
                         </div>
-                        <span style={{ color: '#ccc', fontSize: '0.8rem', marginLeft: '0.5rem' }}>{ownerOpen ? '▾' : '▸'}</span>
+                        <span style={{ color: '#d1d5db', fontSize: '0.78rem', marginLeft: 4 }}>{ownerOpen ? '▾' : '▸'}</span>
                       </div>
 
                       {/* Pets */}
                       {ownerOpen && (
-                        <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                        <div style={{ background: '#f9fafb', borderTop: `1px solid ${BORDER}` }}>
                           {ownerPets.length === 0 ? (
-                            <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.5rem 0.75rem 3.5rem', margin: 0 }}>No pets registered for this owner.</p>
+                            <p style={{ color: '#d1d5db', fontSize: '0.82rem', padding: '10px 18px 10px 60px', margin: 0 }}>No pets registered.</p>
                           ) : ownerPets.map((pet, pi) => {
                             const petKey  = `p${pet.pet_id}`;
                             const petOpen = expanded[petKey];
@@ -519,68 +722,70 @@ function RecordsTab({ refs }) {
                               .sort((a, b) => new Date(b.vaccine_date) - new Date(a.vaccine_date));
 
                             return (
-                              <div key={pet.pet_id} style={{ borderTop: pi > 0 ? '1px solid #f0f0f0' : 'none' }}>
+                              <div key={pet.pet_id} style={{ borderTop: pi > 0 ? `1px solid ${BORDER}` : 'none' }}>
 
                                 {/* Pet row */}
-                                <div
-                                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1.25rem 0.75rem 3rem', cursor: 'pointer', background: petOpen ? '#f3f4f6' : 'transparent', transition: 'background 0.1s' }}
-                                  onClick={() => toggle(petKey)}
-                                  onMouseOver={e => { if (!petOpen) e.currentTarget.style.background = '#f5f5f5'; }}
+                                <div onClick={() => toggle(petKey)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px 10px 44px', cursor: 'pointer', background: petOpen ? '#f3f4f6' : 'transparent', transition: 'background 0.1s' }}
+                                  onMouseOver={e => { if (!petOpen) e.currentTarget.style.background = '#f0f0f0'; }}
                                   onMouseOut={e => { if (!petOpen) e.currentTarget.style.background = 'transparent'; }}
                                 >
-                                  <span style={{ fontSize: '1.15rem' }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
+                                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{pet.pet_type?.toLowerCase().includes('cat') ? '🐱' : '🐶'}</span>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <span style={{ fontWeight: 600, color: '#222', fontSize: '0.875rem' }}>{pet.pet_name}</span>
-                                    <span style={{ color: '#999', fontSize: '0.77rem', marginLeft: '0.5rem' }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
+                                    <span style={{ fontWeight: 600, color: '#111', fontSize: '0.85rem' }}>{pet.pet_name}</span>
+                                    <span style={{ color: MUTED, fontSize: '0.75rem', marginLeft: 6 }}>{[pet.pet_type, pet.pet_color, pet.pet_age].filter(Boolean).join(' · ')}</span>
                                   </div>
-                                  <span style={{ background: petVacc.length ? '#dcfce7' : '#f5f5f5', color: petVacc.length ? '#15803d' : '#aaa', borderRadius: '6px', padding: '0.18rem 0.6rem', fontSize: '0.74rem', fontWeight: 600, marginRight: '0.5rem', whiteSpace: 'nowrap' }}>
-                                    💉 {petVacc.length} dose{petVacc.length !== 1 ? 's' : ''}
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: petVacc.length ? '#16a34a' : '#bbb', background: petVacc.length ? '#f0fdf4' : '#f5f6fa', border: `1px solid ${petVacc.length ? '#86efac' : BORDER}`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                                    💉 {petVacc.length}
                                   </span>
-                                  <div style={{ display: 'flex', gap: '0.35rem' }} onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: 'flex', gap: 5 }} onClick={e => e.stopPropagation()}>
                                     {btnEdit('pet_table', 'pet_id', pet, [{ key:'pet_name', label:'Pet Name', required:true }, { key:'pet_type', label:'Type / Species' }, { key:'pet_color', label:'Color' }, { key:'pet_age', label:'Age' }], 'Pet')}
                                     {btnDel('pet_table', 'pet_id', pet.pet_name, pet)}
                                   </div>
-                                  <span style={{ color: '#ccc', fontSize: '0.78rem', marginLeft: '0.4rem' }}>{petOpen ? '▾' : '▸'}</span>
+                                  <span style={{ color: '#d1d5db', fontSize: '0.76rem', marginLeft: 4 }}>{petOpen ? '▾' : '▸'}</span>
                                 </div>
 
                                 {/* Vaccination records */}
                                 {petOpen && (
-                                  <div style={{ borderTop: '1px dashed #e8e8e8', background: '#fff' }}>
+                                  <div style={{ borderTop: `1px solid ${BORDER}`, background: '#fff' }}>
                                     {petVacc.length === 0 ? (
-                                      <p style={{ color: '#ccc', fontSize: '0.82rem', padding: '0.75rem 1.5rem 0.75rem 5rem', margin: 0 }}>No vaccination records.</p>
+                                      <p style={{ color: '#d1d5db', fontSize: '0.82rem', padding: '10px 18px 10px 64px', margin: 0 }}>No vaccination records.</p>
                                     ) : (
-                                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
                                         <thead>
-                                          <tr style={{ background: '#f8f9fa' }}>
-                                            {['Date', 'Vaccine', 'Manufacturer', 'Session', 'Type', ''].map(h => (
-                                              <th key={h} style={{ padding: '0.5rem 1rem 0.5rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 700, color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap', paddingLeft: h === 'Date' ? '5rem' : '1rem' }}>{h}</th>
+                                          <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                                            {['Date', 'Vaccine', 'Manufacturer', 'Approval', 'Type', ''].map((h, hi) => (
+                                              <th key={h} style={{ padding: hi === 0 ? '7px 14px 7px 64px' : '7px 14px', textAlign: 'left', fontSize: '0.67rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: MUTED, whiteSpace: 'nowrap' }}>{h}</th>
                                             ))}
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {petVacc.map((v, vi) => (
-                                            <tr key={v.vaccine_id} style={{ borderTop: '1px solid #f5f5f5' }}
-                                              onMouseOver={e => e.currentTarget.style.background = '#fafafa'}
+                                            <tr key={v.vaccine_id} style={{ borderBottom: vi < petVacc.length - 1 ? `1px solid #f5f6fa` : 'none' }}
+                                              onMouseOver={e => e.currentTarget.style.background = '#f9fafb'}
                                               onMouseOut={e => e.currentTarget.style.background = ''}
                                             >
-                                              <td style={{ padding: '0.65rem 1rem 0.65rem 5rem', fontWeight: 600, color: '#444', whiteSpace: 'nowrap' }}>
+                                              <td style={{ padding: '9px 14px 9px 64px', fontWeight: 600, color: '#111', whiteSpace: 'nowrap' }}>
                                                 {v.vaccine_date ? new Date(v.vaccine_date).toLocaleDateString() : '—'}
                                               </td>
-                                              <td style={{ padding: '0.65rem 1rem' }}>
-                                                <span style={{ background: MAROON_LIGHT, color: MAROON, borderRadius: '5px', padding: '0.2rem 0.55rem', fontWeight: 600, fontSize: '0.8rem' }}>
+                                              <td style={{ padding: '9px 14px' }}>
+                                                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.72rem', color: MAROON, background: MAROON_LIGHT, padding: '3px 8px', borderRadius: 5 }}>
                                                   {v.vaccine_details || '—'}
                                                 </span>
                                               </td>
-                                              <td style={{ padding: '0.65rem 1rem', color: '#777' }}>{v.manufacturer_no || '—'}</td>
-                                              <td style={{ padding: '0.65rem 1rem' }}>
-                                                {v.approval_id && <span style={{ background: '#fef9c3', color: '#92400e', borderRadius: '5px', padding: '0.18rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>🆔 {approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>}
+                                              <td style={{ padding: '9px 14px', color: MUTED }}>{v.manufacturer_no || '—'}</td>
+                                              <td style={{ padding: '9px 14px' }}>
+                                                {v.approval_id
+                                                  ? <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.72rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '3px 8px', borderRadius: 5 }}>{approvalMap[v.approval_id] ?? `#${v.approval_id}`}</span>
+                                                  : <span style={{ color: '#d1d5db' }}>—</span>}
                                               </td>
-                                              <td style={{ padding: '0.65rem 1rem', color: '#999', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
-                                                {v.is_office_visit ? '🏥 Office' : '📍 Drive'}
+                                              <td style={{ padding: '9px 14px', color: MUTED, fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                                                {v.is_office_visit ? 'Office' : 'Drive'}
                                               </td>
-                                              <td style={{ padding: '0.65rem 1rem', whiteSpace: 'nowrap' }}>
-                                                {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
-                                                {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
+                                              <td style={{ padding: '9px 14px', whiteSpace: 'nowrap' }}>
+                                                <div style={{ display: 'flex', gap: 5 }}>
+                                                  {btnEdit('vaccine_table', 'vaccine_id', v, [{ key:'vaccine_date', label:'Date', type:'date', required:true }, { key:'vaccine_details', label:'Vaccine Details' }, { key:'manufacturer_no', label:'Manufacturer No.' }], 'Vaccination')}
+                                                  {btnDel('vaccine_table', 'vaccine_id', `Vaccination #${v.vaccine_id}`, v)}
+                                                </div>
                                               </td>
                                             </tr>
                                           ))}
@@ -603,9 +808,10 @@ function RecordsTab({ refs }) {
         </div>
       )}
 
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {modal && <GenericEditModal title={modal.title} fields={modal.fields} initialValues={modal.row} onSave={handleSave} onClose={() => setModal(null)} />}
       {delModal && <DeleteConfirm name={delModal.name} onConfirm={handleDelete} onCancel={() => setDelModal(null)} />}
-    </>
+    </div>
   );
 }
 
@@ -676,149 +882,179 @@ useEffect(() => {
     }
   }
 
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111', margin: '0 0 0.3rem' }}>👤 Pet Owners</h1>
-          <p style={{ color: '#777', margin: 0, fontSize: '0.9rem' }}>{filtered.length} registered</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners…"
-            style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0.6rem 1rem', fontSize: '0.88rem', outline: 'none', background: '#fff', width: 220 }}
-          />
-          <button onClick={runProvision} disabled={provisioning} style={{
-            background: MAROON, color: '#fff', border: 'none', borderRadius: '8px',
-            padding: '0.6rem 1.1rem', fontWeight: 700, fontSize: '0.85rem',
-            cursor: provisioning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-            opacity: provisioning ? 0.7 : 1,
-          }}>
-            {provisioning ? 'Sending…' : (() => { const u = filtered.filter(r => r.email && !r.credentials_sent).length; return u > 0 ? ('Send to ' + u + ' Unsent Owner' + (u !== 1 ? 's' : '')) : 'All Credentials Sent'; })()} 
-          </button>
-        </div>
-      </div>
+  const BORDER = '#e5e7eb';
+  const MUTED  = '#6b7280';
+  const unsentCount = filtered.filter(r => r.email && !r.credentials_sent).length;
 
+  // Shared stat card with left accent
+  function StatCard({ label, value, desc, color, bg, icon }) {
+    return (
+      <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, background: color, borderRadius: '12px 0 0 12px' }} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: '0.67rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: MUTED }}>{label}</span>
+          <span style={{ width: 28, height: 28, borderRadius: 7, background: bg, display: 'grid', placeItems: 'center', fontSize: '0.85rem', flexShrink: 0 }}>{icon}</span>
+        </div>
+        <span style={{ fontSize: '1.9rem', fontWeight: 800, color, lineHeight: 1, letterSpacing: '-0.02em' }}>
+          {value ?? '—'}
+        </span>
+        <span style={{ fontSize: '0.74rem', color: MUTED, marginTop: 2 }}>{desc}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '1.55rem', fontWeight: 700, color: '#111', margin: '0 0 2px', letterSpacing: '-0.02em' }}>Pet Owners</h1>
+          <p style={{ fontSize: '0.82rem', color: MUTED, margin: 0 }}>{filtered.length} registered owner{filtered.length !== 1 ? 's' : ''}</p>
+        </div>
+      </header>
+
+      {/* Provision flash message */}
       {provisionMsg && (
-        <div style={{ background: provisionMsg.startsWith('✓') ? '#f0fdf4' : '#fff5f5', border: `1px solid ${provisionMsg.startsWith('✓') ? '#86efac' : '#ffcccc'}`, borderRadius: '8px', padding: '0.7rem 1rem', fontSize: '0.85rem', color: provisionMsg.startsWith('✓') ? '#166534' : '#cc0000', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: provisionMsg.startsWith('✓') ? '#f0fdf4' : '#fff5f5', border: `1px solid ${provisionMsg.startsWith('✓') ? '#86efac' : '#fca5a5'}`, borderRadius: 10, padding: '0.75rem 1rem', fontSize: '0.85rem', color: provisionMsg.startsWith('✓') ? '#166534' : '#dc2626', fontWeight: 500 }}>
           {provisionMsg}
         </div>
       )}
 
+      {/* Credential stat cards */}
       {credStatus && (
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          {[
-            { label: 'Credentials Sent', value: credStatus.sent,    color: '#166534', bg: '#dcfce7' },
-            { label: 'Staged (unsent)',   value: credStatus.staged,  color: '#7a5800', bg: '#fef9c3' },
-            { label: 'Not yet staged',    value: credStatus.pending, color: '#888',    bg: '#f5f5f5' },
-          ].map(({ label, value, color, bg }) => (
-            <div key={label} style={{ background: bg, borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.82rem', color, fontWeight: 600 }}>
-              {value} — {label}
-            </div>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <StatCard label="Credentials Sent"  value={credStatus.sent}    desc="owners have login access"       color="#16a34a" bg="#f0fdf4" icon="✉️" />
+          <StatCard label="Staged — Not Sent"  value={credStatus.staged}  desc="password ready, not emailed"    color="#d97706" bg="#fffbeb" icon="⏳" />
+          <StatCard label="Not Yet Staged"     value={credStatus.pending} desc="credentials not yet prepared"   color={MUTED}   bg="#f5f6fa" icon="👤" />
         </div>
       )}
 
+      {/* Main panel */}
+      <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, overflow: 'hidden' }}>
 
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 1px 8px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+        {/* Panel head */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px 12px', borderBottom: `1px solid ${BORDER}`, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.05rem' }}>👤</span>
+            <h3 style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: '#111' }}>
+              Pet Owners · {filtered.length}
+            </h3>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#bbb', fontSize: '0.85rem', pointerEvents: 'none' }}>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search owners…"
+                style={{ border: `1.5px solid ${BORDER}`, borderRadius: 8, padding: '0.5rem 0.9rem 0.5rem 2rem', fontSize: '0.85rem', outline: 'none', background: '#f9fafb', color: '#111', width: 200, fontFamily: 'inherit' }} />
+            </div>
+            <button onClick={runProvision} disabled={provisioning}
+              style={{ background: unsentCount > 0 ? MAROON : '#f0fdf4', color: unsentCount > 0 ? '#fff' : '#16a34a', border: `1px solid ${unsentCount > 0 ? MAROON : '#86efac'}`, borderRadius: 8, padding: '0.5rem 1rem', fontWeight: 700, fontSize: '0.82rem', cursor: provisioning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', opacity: provisioning ? 0.7 : 1 }}
+              onMouseOver={e => { if (unsentCount > 0 && !provisioning) e.currentTarget.style.background = MAROON_DARK; }}
+              onMouseOut={e => { if (unsentCount > 0) e.currentTarget.style.background = MAROON; }}
+            >
+              {provisioning ? 'Sending…' : unsentCount > 0 ? `Send to ${unsentCount} Unsent` : '✓ All Sent'}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
         {loading ? (
-          <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem', margin: 0 }}>Loading…</p>
+          <div style={{ padding: '3rem', display: 'flex', justifyContent: 'center' }}>
+            <span style={{ width: 24, height: 24, border: `3px solid ${MAROON_LIGHT}`, borderTopColor: MAROON, borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+          </div>
         ) : filtered.length === 0 ? (
-          <p style={{ color: '#aaa', textAlign: 'center', padding: '3rem', margin: 0 }}>No records found.</p>
+          <div style={{ padding: '3rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔍</div>
+            <p style={{ fontWeight: 600, fontSize: '0.9rem', margin: '0 0 4px', color: '#111' }}>No owners found</p>
+            <p style={{ fontSize: '0.82rem', color: MUTED, margin: 0 }}>Try adjusting your search.</p>
+          </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
-            <thead>
-              <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
-                {['ID', 'Name', 'Contact Number', 'Email', 'Barangay', 'Credentials', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '0.85rem 1.25rem', textAlign: 'left', fontSize: '0.73rem', fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i) => {
-                const state = sending[r.owner_id];
-                return (
-                  <tr key={r.owner_id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f5f5f5' : 'none' }}
-                    onMouseOver={e => e.currentTarget.style.background = '#fafafa'}
-                    onMouseOut={e => e.currentTarget.style.background = ''}
-                  >
-                    <td style={{ padding: '0.9rem 1.25rem', color: '#aaa' }}>{`#${r.owner_id}`}</td>
-                    <td style={{ padding: '0.9rem 1.25rem', fontWeight: 600, color: '#333' }}>{r.owner_name || '—'}</td>
-                    <td style={{ padding: '0.9rem 1.25rem', color: '#555' }}>{r.contact_number || '—'}</td>
-                    <td style={{ padding: '0.9rem 1.25rem', color: '#555' }}>{r.email || <span style={{ color: '#ccc' }}>No email</span>}</td>
-                    <td style={{ padding: '0.9rem 1.25rem', color: '#555' }}>{refs.barangayMap[r.barangay_id] ?? `Brgy #${r.barangay_id}`}</td>
-                    <td style={{ padding: '0.9rem 1.25rem' }}>
-                      {(state === 'sent' || r.credentials_sent) && state !== 'sending'
-                        ? <span style={{ color: '#16a34a', fontSize: '0.8rem', fontWeight: 600 }}>✓ Already Sent</span>
-                        : state === 'error'
-                        ? <span style={{ color: '#dc2626', fontSize: '0.8rem', fontWeight: 600 }}>✗ Failed</span>
-                        : null}
-                    </td>
-                    <td style={{ padding: '0.9rem 1.25rem', textAlign: 'right' }}>
-                      {r.email ? (
-                        <button
-                          onClick={() => sendCredentials(r)}
-                          disabled={state === 'sending'}
-                          style={{
-                            background: (r.credentials_sent || state === 'sent') ? '#dcfce7' : MAROON_LIGHT,
-                            border: `1px solid ${(r.credentials_sent || state === 'sent') ? '#86efac' : MAROON}30`,
-                            color: (r.credentials_sent || state === 'sent') ? '#166534' : MAROON,
-                            borderRadius: '6px', padding: '0.4rem 0.9rem',
-                            fontSize: '0.8rem', fontWeight: 700,
-                            cursor: state === 'sending' ? 'not-allowed' : 'pointer',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {state === 'sending' ? 'Sending…' : (r.credentials_sent || state === 'sent') ? 'Resend ↻' : 'Send Credentials'}
-                        </button>
-                      ) : (
-                        <span style={{ color: '#ccc', fontSize: '0.8rem' }}>No email</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '0.9rem 1.25rem', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => setEditing(r)} style={{ background: MAROON_LIGHT, border: `1px solid ${MAROON}30`, color: MAROON, borderRadius: '6px', padding: '0.35rem 0.8rem', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', marginRight: '0.4rem' }}>Edit</button>
-                      <button onClick={() => setDeleting(r)} style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', padding: '0.35rem 0.8rem', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>Delete</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                  {['#', 'Name', 'Contact', 'Email', 'Barangay', 'Credentials', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '0.67rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: MUTED, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => {
+                  const state = sending[r.owner_id];
+                  const credSent = r.credentials_sent || state === 'sent';
+                  return (
+                    <tr key={r.owner_id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid #f5f6fa` : 'none' }}
+                      onMouseOver={e => e.currentTarget.style.background = '#f9fafb'}
+                      onMouseOut={e => e.currentTarget.style.background = ''}
+                    >
+                      <td style={{ padding: '10px 14px', color: MUTED, fontSize: '0.78rem', width: 36 }}>#{r.owner_id}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                          <span style={{ width: 30, height: 30, borderRadius: '50%', background: MAROON_LIGHT, color: MAROON, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '0.78rem', flexShrink: 0 }}>
+                            {r.owner_name?.charAt(0).toUpperCase() ?? '?'}
+                          </span>
+                          <span style={{ fontWeight: 600, color: '#111' }}>{r.owner_name || '—'}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px', color: MUTED }}>{r.contact_number || '—'}</td>
+                      <td style={{ padding: '10px 14px', color: r.email ? MUTED : '#d1d5db' }}>{r.email || 'No email'}</td>
+                      <td style={{ padding: '10px 14px', color: MUTED }}>{refs.barangayMap[r.barangay_id] ?? `Brgy #${r.barangay_id}`}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        {state === 'error'
+                          ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 5, padding: '2px 8px' }}>Failed</span>
+                          : credSent
+                          ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '2px 8px' }}>Sent</span>
+                          : <span style={{ fontSize: '0.75rem', color: '#d1d5db' }}>—</span>
+                        }
+                      </td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {r.email ? (
+                            <button onClick={() => sendCredentials(r)} disabled={state === 'sending'}
+                              style={{ background: credSent ? '#f0fdf4' : MAROON_LIGHT, border: `1px solid ${credSent ? '#86efac' : MAROON + '40'}`, color: credSent ? '#16a34a' : MAROON, borderRadius: 6, padding: '4px 10px', fontSize: '0.76rem', fontWeight: 700, cursor: state === 'sending' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                              {state === 'sending' ? 'Sending…' : credSent ? 'Resend ↻' : 'Send'}
+                            </button>
+                          ) : null}
+                          <button onClick={() => setEditing(r)} style={{ background: '#f9fafb', border: `1px solid ${BORDER}`, color: '#374151', borderRadius: 6, padding: '4px 10px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                          <button onClick={() => setDeleting(r)} style={{ background: '#fff5f5', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 6, padding: '4px 10px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {editing  && <GenericEditModal title="Owner" fields={[{ key:'owner_name', label:'Owner Name', required:true }, { key:'contact_number', label:'Contact Number' }]} initialValues={editing} onSave={saveEdit} onClose={() => setEditing(null)} />}
       {deleting && <DeleteConfirm name={deleting.owner_name} onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />}
 
       {showConfirm && (() => {
-        const unsent = filtered.filter(r => r.email && !r.credentials_sent).length;
-        return unsent > 0 ? (
+        return unsentCount > 0 ? (
           <ConfirmModal
             icon="📧"
-            title={`Send to ${unsent} Unsent Owner${unsent !== 1 ? 's' : ''}`}
+            title={`Send to ${unsentCount} Unsent Owner${unsentCount !== 1 ? 's' : ''}`}
             confirmColor={MAROON}
-            confirmLabel={`Send Credentials to ${unsent} Owner${unsent !== 1 ? 's' : ''}`}
-            message={`New passwords will be generated and emailed to ${unsent} owner${unsent !== 1 ? 's' : ''} who have not yet received login credentials.`}
+            confirmLabel={`Send Credentials to ${unsentCount} Owner${unsentCount !== 1 ? 's' : ''}`}
+            message={`New passwords will be generated and emailed to ${unsentCount} owner${unsentCount !== 1 ? 's' : ''} who have not yet received login credentials.`}
             onConfirm={doProvision}
             onCancel={() => setShowConfirm(false)}
           />
         ) : (
-          // All sent — show info only, no confirm button
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
-            onClick={() => setShowConfirm(false)}
-          >
-            <div style={{ background: '#fff', borderRadius: '18px', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            onClick={() => setShowConfirm(false)}>
+            <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
               <div style={{ background: '#16a34a', padding: '1.5rem', textAlign: 'center' }}>
                 <div style={{ fontSize: '2.2rem', marginBottom: '0.4rem' }}>✅</div>
                 <h2 style={{ color: '#fff', fontWeight: 800, margin: 0, fontSize: '1.05rem' }}>All Credentials Sent</h2>
               </div>
               <div style={{ padding: '1.5rem', textAlign: 'center' }}>
-                <p style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.7, margin: '0 0 1.5rem' }}>
-                  All owners with registered email addresses have already received their login credentials. There are no pending owners to send to.
-                </p>
-                <button onClick={() => setShowConfirm(false)}
-                  style={{ background: MAROON, color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem 2rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer' }}>
-                  Close
-                </button>
+                <p style={{ color: '#555', fontSize: '0.9rem', lineHeight: 1.7, margin: '0 0 1.5rem' }}>All owners with registered email addresses have already received their login credentials.</p>
+                <button onClick={() => setShowConfirm(false)} style={{ background: MAROON, color: '#fff', border: 'none', borderRadius: 10, padding: '0.8rem 2rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
               </div>
             </div>
           </div>
@@ -836,7 +1072,7 @@ useEffect(() => {
           onCancel={() => setResendTarget(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -1347,6 +1583,49 @@ function PendingApprovalsTab({ refs, onReviewed }) {
         </>
       )}
     </>
+  );
+}
+
+// ── Vet Account Modal ─────────────────────────────────────────────────────────
+
+function VetAccountModal({ fullName, onClose, onChangePwd, onLogout }) {
+  function initials(name) {
+    if (!name) return 'V';
+    return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px 16px', borderBottom: '1px solid #f0f0f0' }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: MAROON, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '1rem', flexShrink: 0 }}>
+            {initials(fullName)}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.93rem', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName}</div>
+            <div style={{ display: 'inline-block', marginTop: 3, fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', background: MAROON_LIGHT, color: MAROON, border: `1px solid ${MAROON}`, padding: '1px 8px', borderRadius: 999 }}>Vet / Admin</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '4px', flexShrink: 0 }}>×</button>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: '14px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={onChangePwd}
+            style={{ width: '100%', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '0.72rem 1rem', fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer', color: '#333', textAlign: 'left', fontFamily: 'inherit' }}
+            onMouseOver={e => e.currentTarget.style.background = '#f3f4f6'}
+            onMouseOut={e => e.currentTarget.style.background = '#f9fafb'}
+          >🔑 Change Password</button>
+          <div style={{ borderTop: '1px solid #f0f0f0', margin: '2px 0' }} />
+          <button onClick={onLogout}
+            style={{ width: '100%', background: 'none', border: 'none', borderRadius: 10, padding: '0.6rem 1rem', fontSize: '0.88rem', fontWeight: 500, cursor: 'pointer', color: '#6b7280', textAlign: 'left', fontFamily: 'inherit' }}
+            onMouseOver={e => e.currentTarget.style.color = '#111'}
+            onMouseOut={e => e.currentTarget.style.color = '#6b7280'}
+          >Sign out</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
