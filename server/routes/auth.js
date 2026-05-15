@@ -1,6 +1,38 @@
 const router = require('express').Router();
 const requireAuth = require('../middleware/auth');
 
+// POST /api/auth/test-email — sends a plain test email to verify SMTP config
+router.post('/test-email', requireAuth, async (req, res) => {
+  const { to } = req.body;
+  if (!to) return res.status(400).json({ error: 'to address required' });
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: (process.env.EMAIL_PASS || '').replace(/\s/g, ''),
+      },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000,
+      greetingTimeout:   10000,
+      socketTimeout:     15000,
+    });
+    await transporter.verify();
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      to,
+      subject: 'DIGIVET — SMTP test',
+      text: 'If you received this, the email configuration is working correctly.',
+    });
+    res.json({ success: true, message: `Test email sent to ${to}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/auth/me
 router.get('/me', requireAuth, (req, res) => {
   const { id, email, user_metadata } = req.user;
@@ -306,23 +338,29 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       });
     }
 
-    // Generate a secure readable password
-    const { generatePassword, upsertSupabaseUser, sendCredentialsEmail } = require('./authHelpers');
-    const password = generatePassword();
+    const { generatePassword } = require('./authHelpers');
+    const password  = generatePassword();
+    const email     = owner.email.toLowerCase();
+    const metadata  = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
 
-    // Create or update Supabase auth account — avoids the slow listUsers() scan
-    await upsertSupabaseUser(supabase, owner.email.toLowerCase(), password, {
-      full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id,
-    });
+    // Encode credentials in the URL hash — hash never reaches server logs
+    const payload    = Buffer.from(JSON.stringify({ email, password, name: owner.owner_name })).toString('base64url');
+    const redirectTo = `${process.env.CLIENT_URL}/welcome#${payload}`;
 
-    // Send credentials email — only mark sent in DB after this succeeds
-    await sendCredentialsEmail(owner.email, owner.owner_name, password);
+    // Send invite via Supabase (uses their email infrastructure, bypasses SMTP)
+    let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
 
-    await supabase.from('owner_table')
-      .update({ credentials_sent: true })
-      .eq('owner_id', owner.owner_id);
+    if (inviteErr) {
+      // User already exists — delete and re-invite so Supabase re-sends the email
+      const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+      if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
+      const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+      if (retryErr) throw new Error(retryErr.message);
+    }
 
-    res.json({ success: true, message: `Credentials sent to ${owner.email}` });
+    await supabase.from('owner_table').update({ credentials_sent: true }).eq('owner_id', owner.owner_id);
+
+    res.json({ success: true, message: `Credentials email sent to ${email}` });
   } catch (err) {
     console.error('send-owner-credentials error:', err);
     res.status(500).json({ error: err.message || 'Server error' });

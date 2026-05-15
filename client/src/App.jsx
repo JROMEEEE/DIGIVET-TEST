@@ -3,6 +3,7 @@ import Landing from './pages/Landing';
 import StatusCheck from './pages/StatusCheck';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Welcome from './pages/Welcome';
 import PetOwnerDashboard from './pages/PetOwnerDashboard';
 import VetDashboard from './pages/VetDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -14,6 +15,7 @@ function App() {
       <Route path="/status" element={<StatusCheck />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/welcome" element={<Welcome />} />
       <Route
         path="/dashboard"
         element={

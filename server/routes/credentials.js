@@ -68,22 +68,28 @@ async function sendQueued() {
       const email    = owner.email.toLowerCase().trim();
       const password = owner.pending_password;
       const metadata = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
 
-      // Create/update Supabase auth account with plain text password
-      await upsertSupabaseUser(supabase, email, password, metadata);
+      // Encode credentials in URL hash — sent via Supabase email (no SMTP needed)
+      const payload    = Buffer.from(JSON.stringify({ email, password, name: owner.owner_name })).toString('base64url');
+      const redirectTo = `${clientUrl}/welcome#${payload}`;
 
-      // Send email with plain text password + QR
-      await sendCredentialsEmail(email, owner.owner_name, password);
+      let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
 
-      // Hash the password AFTER sending, then store the hash (never clear it)
-      const bcrypt = require('bcryptjs');
-      const hashed = await bcrypt.hash(password, 10);
+      if (inviteErr) {
+        // User already exists — delete and re-invite
+        const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+        if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
+        const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+        if (retryErr) throw new Error(retryErr.message);
+      }
+
       await supabase
         .from('owner_table')
-        .update({ credentials_sent: true, pending_password: hashed })
+        .update({ credentials_sent: true, pending_password: null })
         .eq('owner_id', owner.owner_id);
 
-      console.log(`[credentials] Sent to ${email}`);
+      console.log(`[credentials] Invite sent to ${email}`);
     })
   );
 

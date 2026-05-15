@@ -10,9 +10,9 @@ function getTransporter() {
     const nodemailer = require('nodemailer');
     _transporter = nodemailer.createTransport({
       service: 'gmail',
-      pool: true,          // reuse connections instead of creating a new one per email
-      maxConnections: 5,   // up to 5 parallel SMTP connections
-      maxMessages: 100,    // send up to 100 messages per connection before cycling
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -25,7 +25,6 @@ function getTransporter() {
 async function sendCredentialsEmail(email, name, password) {
   const QRCode = require('qrcode');
 
-  // Generate QR as PNG buffer — CID embed works in all email clients
   const qrBuffer = await QRCode.toBuffer(
     JSON.stringify({ email, password }),
     { width: 220, margin: 2 }
