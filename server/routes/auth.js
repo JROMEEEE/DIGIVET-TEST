@@ -339,26 +339,36 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     }
 
     const { generatePassword } = require('./authHelpers');
-    const password  = generatePassword();
-    const email     = owner.email.toLowerCase();
-    const metadata  = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
+    const password = generatePassword();
+    const email    = owner.email.toLowerCase();
+    const metadata = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
+    const redirectTo = `${process.env.CLIENT_URL}/welcome`;
 
-    // Encode credentials in the URL hash — hash never reaches server logs
-    const payload    = Buffer.from(JSON.stringify({ email, password, name: owner.owner_name })).toString('base64url');
-    const redirectTo = `${process.env.CLIENT_URL}/welcome#${payload}`;
+    // Store password plaintext temporarily — Welcome page retrieves it after auth
+    await supabase.from('owner_table')
+      .update({ pending_password: password })
+      .eq('owner_id', owner.owner_id);
 
-    // Send invite via Supabase (uses their email infrastructure, bypasses SMTP)
-    let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+    // Send invite via Supabase email (bypasses Render's SMTP port block)
+    let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo,
+      data: { ...metadata, plain_password: password },
+    });
 
     if (inviteErr) {
-      // User already exists — delete and re-invite so Supabase re-sends the email
+      // User already exists — find, delete, then re-invite with fresh credentials
       const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
       if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-      const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+      const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+        redirectTo,
+        data: { ...metadata, plain_password: password },
+      });
       if (retryErr) throw new Error(retryErr.message);
     }
 
-    await supabase.from('owner_table').update({ credentials_sent: true }).eq('owner_id', owner.owner_id);
+    await supabase.from('owner_table')
+      .update({ credentials_sent: true })
+      .eq('owner_id', owner.owner_id);
 
     res.json({ success: true, message: `Credentials email sent to ${email}` });
   } catch (err) {
@@ -428,5 +438,40 @@ async function findOwnerId(displayName, supabase) {
     .maybeSingle();
   return data?.owner_id ?? null;
 }
+
+// GET /api/auth/my-credentials
+// Called by the Welcome page after Supabase auth is established.
+// Returns the pending plaintext password for the authenticated owner, then clears it.
+router.get('/my-credentials', requireAuth, async (req, res) => {
+  try {
+    const getSupabase = require('../supabase');
+    const supabase    = getSupabase();
+    const userEmail   = req.user.email?.toLowerCase();
+
+    const { data: owner, error } = await supabase
+      .from('owner_table')
+      .select('owner_id, owner_name, email, pending_password')
+      .eq('email', userEmail)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error || !owner || !owner.pending_password) {
+      return res.status(404).json({ error: 'No pending credentials found.' });
+    }
+
+    // Clear it immediately — one-time retrieval
+    await supabase.from('owner_table')
+      .update({ pending_password: null })
+      .eq('owner_id', owner.owner_id);
+
+    res.json({
+      name:     owner.owner_name,
+      email:    owner.email,
+      password: owner.pending_password,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 module.exports = router;

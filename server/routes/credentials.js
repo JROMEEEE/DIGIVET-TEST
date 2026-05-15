@@ -65,28 +65,30 @@ async function sendQueued() {
 
   const settled = await Promise.allSettled(
     owners.map(async owner => {
-      const email    = owner.email.toLowerCase().trim();
-      const password = owner.pending_password;
-      const metadata = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
-      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      const email      = owner.email.toLowerCase().trim();
+      const password   = owner.pending_password;
+      const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
+      const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
+      const redirectTo = `${clientUrl}/welcome`;
 
-      // Encode credentials in URL hash — sent via Supabase email (no SMTP needed)
-      const payload    = Buffer.from(JSON.stringify({ email, password, name: owner.owner_name })).toString('base64url');
-      const redirectTo = `${clientUrl}/welcome#${payload}`;
-
-      let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+      let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+        redirectTo,
+        data: { ...metadata, plain_password: password },
+      });
 
       if (inviteErr) {
-        // User already exists — delete and re-invite
         const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
         if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-        const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata });
+        const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+          redirectTo,
+          data: { ...metadata, plain_password: password },
+        });
         if (retryErr) throw new Error(retryErr.message);
       }
 
       await supabase
         .from('owner_table')
-        .update({ credentials_sent: true, pending_password: null })
+        .update({ credentials_sent: true })
         .eq('owner_id', owner.owner_id);
 
       console.log(`[credentials] Invite sent to ${email}`);
