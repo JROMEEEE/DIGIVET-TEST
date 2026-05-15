@@ -71,7 +71,7 @@ async function sendQueued() {
       const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
       const redirectTo = `${clientUrl}/welcome`;
 
-      let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+      let { data: inviteData, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
         redirectTo,
         data: { ...metadata, plain_password: password },
       });
@@ -79,11 +79,21 @@ async function sendQueued() {
       if (inviteErr) {
         const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
         if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-        const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+        const { data: retryData, error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
           redirectTo,
           data: { ...metadata, plain_password: password },
         });
         if (retryErr) throw new Error(retryErr.message);
+        inviteData = retryData;
+      }
+
+      // Set the password immediately — inviteUserByEmail alone doesn't set one
+      if (inviteData?.user?.id) {
+        await supabase.auth.admin.updateUserById(inviteData.user.id, {
+          password,
+          email_confirm: true,
+          user_metadata: metadata,
+        });
       }
 
       await supabase

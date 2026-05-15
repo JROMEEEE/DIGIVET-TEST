@@ -350,7 +350,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .eq('owner_id', owner.owner_id);
 
     // Send invite via Supabase email (bypasses Render's SMTP port block)
-    let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+    let { data: inviteData, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: { ...metadata, plain_password: password },
     });
@@ -359,11 +359,21 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       // User already exists — find, delete, then re-invite with fresh credentials
       const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
       if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-      const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+      const { data: retryData, error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
         redirectTo,
         data: { ...metadata, plain_password: password },
       });
       if (retryErr) throw new Error(retryErr.message);
+      inviteData = retryData;
+    }
+
+    // Set the password on the auth account immediately — inviteUserByEmail alone doesn't set one
+    if (inviteData?.user?.id) {
+      await supabase.auth.admin.updateUserById(inviteData.user.id, {
+        password,
+        email_confirm: true,
+        user_metadata: metadata,
+      });
     }
 
     await supabase.from('owner_table')
