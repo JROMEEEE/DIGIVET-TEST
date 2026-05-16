@@ -29,6 +29,7 @@ async function syncOwnerLocalCredentials(supabase, ownerId, email, password, dis
     owner_id: ownerId,
     email: normalizedEmail,
     username: normalizedEmail,
+    user_role: 'pet_owner',
     password,
     password_hash: passwordHash,
     display_name: displayName ?? '',
