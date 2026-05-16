@@ -15,6 +15,7 @@ function buildOwnerCredentialMetadata({ ownerId, ownerName, email, password, red
     qr_payload: qrPayload,
     qr_image_url: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`,
     credential_login_url: `${(redirectTo || '').replace(/\/welcome$/, '')}/login`,
+    must_change_password: true,
   };
 }
 

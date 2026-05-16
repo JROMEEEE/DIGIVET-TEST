@@ -60,13 +60,14 @@ const MAROON_DARK = '#5a1221';
 const MAROON_LIGHT = '#f5e8ea';
 
 export default function PetOwnerDashboard() {
-  const { user, fullName, ownerId, logout } = useAuth();
+  const { user, fullName, ownerId, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [pets, setPets]             = useState([]);
   const [petsLoading, setPetsLoading] = useState(true);
   const [vaccinations, setVaccinations] = useState([]);
   const [editRequests, setEditRequests] = useState([]);
   const [showChangePwd, setShowChangePwd] = useState(false);
+  const [forcedPwdChange, setForcedPwdChange] = useState(false);
   const [activeTab, setActiveTab]   = useState('overview');
 
   function loadPets() {
@@ -91,6 +92,13 @@ export default function PetOwnerDashboard() {
     loadVaccinations();
     loadEditRequests();
   }, []);
+
+  useEffect(() => {
+    if (user?.user_metadata?.must_change_password) {
+      setForcedPwdChange(true);
+      setShowChangePwd(true);
+    }
+  }, [user]);
 
   async function handleLogout() {
     await logout();
@@ -165,7 +173,17 @@ export default function PetOwnerDashboard() {
           </button>
         </div>
       </aside>
-      {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
+      {showChangePwd && (
+        <ChangePasswordModal
+          forced={forcedPwdChange}
+          onClose={() => { setShowChangePwd(false); setForcedPwdChange(false); }}
+          onSuccess={async () => {
+            await refreshUser();
+            setShowChangePwd(false);
+            setForcedPwdChange(false);
+          }}
+        />
+      )}
       {showWarning && <SessionWarning secondsLeft={secondsLeft} onStay={stayLoggedIn} onLogout={handleLogout} />}
 
       {/* Main */}
