@@ -51,7 +51,6 @@ async function stageCredentials() {
 // ── STEP 3: Send queued credentials (slow — email) ───────────────────────────
 async function sendQueued() {
   const getSupabase = require('../supabase');
-  const { sendCredentialsEmail, upsertSupabaseUser } = require('./authHelpers');
   const supabase = getSupabase();
 
   const { data: owners } = await supabase
@@ -63,6 +62,12 @@ async function sendQueued() {
 
   if (!owners?.length) return { sent: 0, errors: [] };
 
+  // Fetch existing auth users once for the whole batch
+  const { data: authData } = await supabase.auth.admin.listUsers();
+  const existingEmails = new Map(
+    (authData?.users ?? []).map(u => [u.email?.toLowerCase(), u.id])
+  );
+
   const settled = await Promise.allSettled(
     owners.map(async owner => {
       const email      = owner.email.toLowerCase().trim();
@@ -71,30 +76,26 @@ async function sendQueued() {
       const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
       const redirectTo = `${clientUrl}/welcome`;
 
-      let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
-        redirectTo,
-        data: { ...metadata, plain_password: password },
+      // Delete existing auth account so we can recreate with new password + send confirmation email
+      const existingId = existingEmails.get(email);
+      if (existingId) await supabase.auth.admin.deleteUser(existingId);
+
+      const { error: createErr } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: false,
+        email_redirect_to: redirectTo,
+        user_metadata: { ...metadata, plain_password: password },
       });
 
-      if (inviteErr) {
-        const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
-        if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-        const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
-          redirectTo,
-          data: { ...metadata, plain_password: password },
-        });
-        if (retryErr) throw new Error(retryErr.message);
-      }
-
-      // Set the password reliably via upsertSupabaseUser (uses generateLink to find the user)
-      await upsertSupabaseUser(supabase, email, password, metadata);
+      if (createErr) throw new Error(createErr.message);
 
       await supabase
         .from('owner_table')
         .update({ credentials_sent: true })
         .eq('owner_id', owner.owner_id);
 
-      console.log(`[credentials] Invite sent to ${email}`);
+      console.log(`[credentials] Sent to ${email}`);
     })
   );
 
