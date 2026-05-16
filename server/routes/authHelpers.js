@@ -175,30 +175,62 @@ async function deliverOwnerCredentials(supabase, email, name, password, metadata
   return { channel: 'smtp-credentials', user };
 }
 
+async function sendMagicLinkEmail(email, name, magicLink) {
+  await getTransporter().sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to: email,
+    subject: 'Your DIGIVET Online Login Link',
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:0;border-radius:12px;overflow:hidden;border:1px solid #e0e0e0;">
+        <div style="background:#7B1B2E;padding:28px 32px;text-align:center;">
+          <div style="color:#fff;font-weight:bold;font-size:22px;letter-spacing:1px;">DIGIVET Online</div>
+          <div style="color:#f5c6ce;font-size:13px;margin-top:4px;">Lipa City Veterinary Office</div>
+        </div>
+        <div style="padding:32px;">
+          <h2 style="color:#111;margin:0 0 8px;font-size:20px;">Hello, ${name}!</h2>
+          <p style="color:#555;line-height:1.6;margin:0 0 24px;">Click the button below to securely sign in to your <strong>DIGIVET Online</strong> account. This link expires in 1 hour and can only be used once.</p>
+          <div style="text-align:center;margin:0 0 28px;">
+            <a href="${magicLink}" style="display:inline-block;background:#7B1B2E;color:#fff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:bold;font-size:15px;">Log In to DIGIVET</a>
+          </div>
+          <div style="background:#f9f2f3;border-left:4px solid #7B1B2E;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+            <p style="margin:0;color:#666;font-size:13px;">If the button above doesn't work, copy and paste this link into your browser:</p>
+            <p style="margin:8px 0 0;word-break:break-all;font-size:12px;color:#7B1B2E;">${magicLink}</p>
+          </div>
+          <p style="color:#aaa;font-size:12px;text-align:center;margin:0;">If you did not request this link, you can safely ignore this email.<br/>Contact the Lipa City Veterinary Office if you need assistance.</p>
+        </div>
+        <div style="background:#f5f5f5;padding:16px 32px;text-align:center;border-top:1px solid #e0e0e0;">
+          <p style="margin:0;color:#bbb;font-size:11px;">DIGIVET Online &mdash; Lipa City Veterinary Office &copy; ${new Date().getFullYear()}</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 async function sendOwnerAccessLink(supabase, email, password, metadata, redirectTo) {
   const normalizedEmail = email.toLowerCase().trim();
-  if (!process.env.SUPABASE_ANON_KEY) {
-    throw new Error('Missing SUPABASE_ANON_KEY');
-  }
 
   const user = await upsertSupabaseUser(supabase, normalizedEmail, password, metadata);
   if (!user?.id) {
     throw new Error(`Failed to create or update Supabase auth user for ${normalizedEmail}`);
   }
 
-  const { createClient } = require('@supabase/supabase-js');
-  const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-  const { error: otpErr } = await anonClient.auth.signInWithOtp({
+  const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+    type: 'magiclink',
     email: normalizedEmail,
-    options: {
-      emailRedirectTo: redirectTo,
-      shouldCreateUser: false,
-    },
+    options: { redirectTo },
   });
 
-  if (otpErr) {
-    throw new Error(`Magic link send failed: ${otpErr.message}`);
+  if (linkErr) {
+    throw new Error(`Magic link generation failed: ${linkErr.message}`);
   }
+
+  const magicLink = linkData?.properties?.action_link;
+  if (!magicLink) {
+    throw new Error('Magic link URL was not returned by Supabase');
+  }
+
+  const displayName = metadata?.full_name || normalizedEmail;
+  await sendMagicLinkEmail(normalizedEmail, displayName, magicLink);
 
   return user;
 }
@@ -248,4 +280,4 @@ async function upsertSupabaseUser(supabase, email, password, metadata) {
   return null;
 }
 
-module.exports = { buildOwnerCredentialMetadata, deliverOwnerCredentials, findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };
+module.exports = { buildOwnerCredentialMetadata, deliverOwnerCredentials, findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendMagicLinkEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };
