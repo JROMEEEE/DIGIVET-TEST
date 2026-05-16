@@ -55,7 +55,7 @@ async function stageCredentials() {
 // ── STEP 3: Send queued credentials (slow — email) ───────────────────────────
 async function sendQueued() {
   const getSupabase = require('../supabase');
-  const { deliverOwnerCredentials, syncOwnerLocalCredentials } = require('./authHelpers');
+  const { buildOwnerCredentialMetadata, deliverOwnerCredentials, syncOwnerLocalCredentials } = require('./authHelpers');
   const supabase = getSupabase();
 
   const { data: owners } = await supabase
@@ -70,8 +70,14 @@ async function sendQueued() {
     owners.map(async owner => {
       const email      = owner.email.toLowerCase().trim();
       const password   = owner.pending_password;
-      const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
       const redirectTo = `${getClientUrl()}/welcome`;
+      const metadata   = buildOwnerCredentialMetadata({
+        ownerId: owner.owner_id,
+        ownerName: owner.owner_name,
+        email,
+        password,
+        redirectTo,
+      });
 
       await deliverOwnerCredentials(supabase, email, owner.owner_name, password, metadata, redirectTo);
       await syncOwnerLocalCredentials(supabase, owner.owner_id, email, password, owner.owner_name);

@@ -3,6 +3,21 @@ function generatePassword() {
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+function buildOwnerCredentialMetadata({ ownerId, ownerName, email, password, redirectTo }) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const qrPayload = JSON.stringify({ email: normalizedEmail, password });
+
+  return {
+    full_name: ownerName,
+    role: 'pet_owner',
+    owner_id: ownerId,
+    generated_password: password,
+    qr_payload: qrPayload,
+    qr_image_url: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`,
+    credential_login_url: `${(redirectTo || '').replace(/\/welcome$/, '')}/login`,
+  };
+}
+
 async function syncOwnerLocalCredentials(supabase, ownerId, email, password, displayName) {
   if (!ownerId || !email || !password) return;
 
@@ -217,4 +232,4 @@ async function upsertSupabaseUser(supabase, email, password, metadata) {
   return null;
 }
 
-module.exports = { deliverOwnerCredentials, findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };
+module.exports = { buildOwnerCredentialMetadata, deliverOwnerCredentials, findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };

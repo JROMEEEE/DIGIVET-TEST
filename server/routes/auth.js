@@ -348,11 +348,17 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       });
     }
 
-    const { deliverOwnerCredentials, generatePassword, syncOwnerLocalCredentials } = require('./authHelpers');
+    const { buildOwnerCredentialMetadata, deliverOwnerCredentials, generatePassword, syncOwnerLocalCredentials } = require('./authHelpers');
     const password   = generatePassword();
     const email      = owner.email.toLowerCase();
-    const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
     const redirectTo = `${resolveClientUrl(req)}/welcome`;
+    const metadata   = buildOwnerCredentialMetadata({
+      ownerId: owner.owner_id,
+      ownerName: owner.owner_name,
+      email,
+      password,
+      redirectTo,
+    });
 
     // Store password temporarily so Welcome page can display it after confirmation
     const { error: stageErr } = await supabase.from('owner_table')
