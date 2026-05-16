@@ -33,21 +33,39 @@ async function syncOwnerLocalCredentials(supabase, ownerId, email, password, dis
     display_name: displayName ?? '',
   };
 
-  const { data: existing, error: fetchErr } = await supabase
+  const { data: existingByOwner, error: fetchOwnerErr } = await supabase
     .from('user_table')
-    .select('user_id')
+    .select('user_id, userinfo_id, owner_id, email')
     .eq('owner_id', ownerId)
     .maybeSingle();
 
-  if (fetchErr) {
-    throw new Error(`Failed to read local owner credentials: ${fetchErr.message}`);
+  if (fetchOwnerErr) {
+    throw new Error(`Failed to read local owner credentials: ${fetchOwnerErr.message}`);
   }
 
-  if (existing?.user_id) {
+  let existing = existingByOwner;
+
+  if (!existing?.user_id && !existing?.userinfo_id) {
+    const { data: existingByEmail, error: fetchEmailErr } = await supabase
+      .from('user_table')
+      .select('user_id, userinfo_id, owner_id, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (fetchEmailErr) {
+      throw new Error(`Failed to read local owner credentials by email: ${fetchEmailErr.message}`);
+    }
+
+    existing = existingByEmail;
+  }
+
+  if (existing?.user_id || existing?.userinfo_id) {
+    const rowIdColumn = existing?.user_id ? 'user_id' : 'userinfo_id';
+    const rowIdValue = existing?.user_id ?? existing?.userinfo_id;
     const { error: updateErr } = await supabase
       .from('user_table')
       .update(payload)
-      .eq('user_id', existing.user_id);
+      .eq(rowIdColumn, rowIdValue);
 
     if (updateErr) {
       throw new Error(`Failed to update local owner credentials: ${updateErr.message}`);
@@ -55,9 +73,23 @@ async function syncOwnerLocalCredentials(supabase, ownerId, email, password, dis
     return;
   }
 
+  const { data: lastRow, error: lastRowErr } = await supabase
+    .from('user_table')
+    .select('userinfo_id')
+    .order('userinfo_id', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastRowErr) {
+    throw new Error(`Failed to determine next local credential ID: ${lastRowErr.message}`);
+  }
+
   const { error: insertErr } = await supabase
     .from('user_table')
-    .insert(payload);
+    .insert({
+      ...payload,
+      userinfo_id: (lastRow?.userinfo_id ?? 0) + 1,
+    });
 
   if (insertErr) {
     throw new Error(`Failed to create local owner credentials: ${insertErr.message}`);
