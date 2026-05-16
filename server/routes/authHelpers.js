@@ -171,24 +171,6 @@ async function deliverOwnerCredentials(supabase, email, name, password, metadata
     throw new Error(`Failed to create or update Supabase auth user for ${normalizedEmail}`);
   }
 
-  if (process.env.SUPABASE_ANON_KEY) {
-    const { createClient } = require('@supabase/supabase-js');
-    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { error: otpErr } = await anonClient.auth.signInWithOtp({
-      email: normalizedEmail,
-      options: {
-        emailRedirectTo: redirectTo,
-        shouldCreateUser: false,
-      },
-    });
-
-    if (otpErr) {
-      throw new Error(`Magic link send failed: ${otpErr.message}`);
-    }
-
-    return { channel: 'supabase-otp', user };
-  }
-
   await sendCredentialsEmail(normalizedEmail, name, password);
   return { channel: 'smtp-credentials', user };
 }
