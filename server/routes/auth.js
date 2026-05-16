@@ -349,24 +349,37 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .update({ pending_password: password })
       .eq('owner_id', owner.owner_id);
 
-    // Delete existing auth account if present — admin generateLink reliably finds them
-    const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
-    if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
+    // Delete existing auth account so signUp triggers a fresh confirmation email
+    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+    console.log(`[send-creds] generateLink for ${email}:`, linkData?.user?.id ?? 'no user found', linkErr?.message ?? '');
+    if (linkData?.user?.id) {
+      const { error: delErr } = await supabase.auth.admin.deleteUser(linkData.user.id);
+      console.log(`[send-creds] deleteUser:`, delErr?.message ?? 'ok');
+    }
 
-    // Use the ANON key client for signUp — this is the only way to trigger
-    // Supabase's confirmation email. Admin createUser does NOT send any email.
+    // signUp via anon client — triggers Supabase's confirmation email
     const { createClient } = require('@supabase/supabase-js');
     const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { error: signupErr } = await anonClient.auth.signUp({
+    const { data: signupData, error: signupErr } = await anonClient.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: redirectTo,
-        data: metadata,   // no plain_password in metadata — credentials fetched via API
-      },
+      options: { emailRedirectTo: redirectTo, data: metadata },
     });
 
+    console.log(`[send-creds] signUp result for ${email}:`,
+      signupErr ? `ERROR: ${signupErr.message}` :
+      signupData?.user?.email_confirmed_at ? 'auto-confirmed (email confirmations may be OFF in Supabase)' :
+      'confirmation email sent'
+    );
+
     if (signupErr) throw new Error(signupErr.message);
+
+    if (signupData?.user?.email_confirmed_at) {
+      throw new Error(
+        'Supabase did not send a confirmation email because "Enable Email Confirmations" is turned OFF. ' +
+        'Go to Supabase → Authentication → Providers → Email and enable it.'
+      );
+    }
 
     await supabase.from('owner_table')
       .update({ credentials_sent: true })
@@ -374,7 +387,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Credentials email sent to ${email}` });
   } catch (err) {
-    console.error('send-owner-credentials error:', err);
+    console.error('[send-creds] error:', err.message);
     res.status(500).json({ error: err.message || 'Server error' });
   }
 });
