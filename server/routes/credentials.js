@@ -62,11 +62,7 @@ async function sendQueued() {
 
   if (!owners?.length) return { sent: 0, errors: [] };
 
-  // Fetch existing auth users once for the whole batch
-  const { data: authData } = await supabase.auth.admin.listUsers();
-  const existingEmails = new Map(
-    (authData?.users ?? []).map(u => [u.email?.toLowerCase(), u.id])
-  );
+  const { createClient } = require('@supabase/supabase-js');
 
   const settled = await Promise.allSettled(
     owners.map(async owner => {
@@ -76,19 +72,19 @@ async function sendQueued() {
       const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
       const redirectTo = `${clientUrl}/welcome`;
 
-      // Delete existing auth account so we can recreate with new password + send confirmation email
-      const existingId = existingEmails.get(email);
-      if (existingId) await supabase.auth.admin.deleteUser(existingId);
+      // Delete existing auth account if present
+      const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+      if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
 
-      const { error: createErr } = await supabase.auth.admin.createUser({
+      // signUp via anon client — only this triggers Supabase's confirmation email
+      const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+      const { error: signupErr } = await anonClient.auth.signUp({
         email,
         password,
-        email_confirm: false,
-        email_redirect_to: redirectTo,
-        user_metadata: { ...metadata, plain_password: password },
+        options: { emailRedirectTo: redirectTo, data: metadata },
       });
 
-      if (createErr) throw new Error(createErr.message);
+      if (signupErr) throw new Error(signupErr.message);
 
       await supabase
         .from('owner_table')

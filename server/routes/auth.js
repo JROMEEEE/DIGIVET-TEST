@@ -344,27 +344,29 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
     const redirectTo = `${process.env.CLIENT_URL}/welcome`;
 
-    // Store password so Welcome page can retrieve it after the user confirms
+    // Store password temporarily so Welcome page can display it after confirmation
     await supabase.from('owner_table')
       .update({ pending_password: password })
       .eq('owner_id', owner.owner_id);
 
-    // If user already exists in Supabase auth, delete them first so we can recreate cleanly
-    const { data: existing } = await supabase.auth.admin.listUsers();
-    const existingUser = existing?.users?.find(u => u.email?.toLowerCase() === email);
-    if (existingUser) await supabase.auth.admin.deleteUser(existingUser.id);
+    // Delete existing auth account if present — admin generateLink reliably finds them
+    const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+    if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
 
-    // createUser with email_confirm: false → Supabase sends the confirmation email automatically
-    // Password is set at creation so login works immediately after confirmation
-    const { error: createErr } = await supabase.auth.admin.createUser({
+    // Use the ANON key client for signUp — this is the only way to trigger
+    // Supabase's confirmation email. Admin createUser does NOT send any email.
+    const { createClient } = require('@supabase/supabase-js');
+    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: signupErr } = await anonClient.auth.signUp({
       email,
       password,
-      email_confirm: false,
-      email_redirect_to: redirectTo,
-      user_metadata: { ...metadata, plain_password: password },
+      options: {
+        emailRedirectTo: redirectTo,
+        data: metadata,   // no plain_password in metadata — credentials fetched via API
+      },
     });
 
-    if (createErr) throw new Error(createErr.message);
+    if (signupErr) throw new Error(signupErr.message);
 
     await supabase.from('owner_table')
       .update({ credentials_sent: true })
