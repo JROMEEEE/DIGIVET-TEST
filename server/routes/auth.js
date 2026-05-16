@@ -350,31 +350,26 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .eq('owner_id', owner.owner_id);
 
     // Send invite via Supabase email (bypasses Render's SMTP port block)
-    let { data: inviteData, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+    let { error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: { ...metadata, plain_password: password },
     });
 
     if (inviteErr) {
-      // User already exists — find, delete, then re-invite with fresh credentials
+      // User already exists — delete then re-invite
       const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
       if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-      const { data: retryData, error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
+      const { error: retryErr } = await supabase.auth.admin.inviteUserByEmail(email, {
         redirectTo,
         data: { ...metadata, plain_password: password },
       });
       if (retryErr) throw new Error(retryErr.message);
-      inviteData = retryData;
     }
 
-    // Set the password on the auth account immediately — inviteUserByEmail alone doesn't set one
-    if (inviteData?.user?.id) {
-      await supabase.auth.admin.updateUserById(inviteData.user.id, {
-        password,
-        email_confirm: true,
-        user_metadata: metadata,
-      });
-    }
+    // Set the password via generateLink — more reliable than using inviteUserByEmail's returned user
+    // inviteUserByEmail sometimes returns user.id as null depending on Supabase version
+    const { upsertSupabaseUser } = require('./authHelpers');
+    await upsertSupabaseUser(supabase, email, password, metadata);
 
     await supabase.from('owner_table')
       .update({ credentials_sent: true })
