@@ -162,6 +162,16 @@ async function generateSession(supabase, email, displayName, role, ownerId, pass
   return res.json({ email, role });
 }
 
+function resolveClientUrl(req) {
+  const configured = process.env.CLIENT_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+
+  const origin = req.get('origin')?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+
+  return 'http://localhost:5173';
+}
+
 // POST /api/auth/register-owner
 // Creates a Supabase account for a pet owner using their email from owner_table
 router.post('/register-owner', async (req, res) => {
@@ -342,7 +352,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     const password   = generatePassword();
     const email      = owner.email.toLowerCase();
     const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
-    const redirectTo = `${process.env.CLIENT_URL}/welcome`;
+    const redirectTo = `${resolveClientUrl(req)}/welcome`;
 
     // Store password temporarily so Welcome page can display it after confirmation
     const { error: stageErr } = await supabase.from('owner_table')
@@ -359,7 +369,13 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Credentials email sent to ${email}` });
   } catch (err) {
-    console.error('[send-creds] error:', err.message);
+    console.error('[send-creds] error:', {
+      owner_id,
+      force: !!req.body?.force,
+      origin: req.get('origin') ?? null,
+      client_url: process.env.CLIENT_URL ?? null,
+      message: err.message,
+    });
     res.status(500).json({ error: err.message || 'Server error' });
   }
 });

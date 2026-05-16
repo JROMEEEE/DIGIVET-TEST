@@ -96,6 +96,24 @@ async function sendOwnerAccessLink(supabase, email, password, metadata, redirect
   return user;
 }
 
+async function findAuthUserByEmail(supabase, email) {
+  const normalizedEmail = email.toLowerCase().trim();
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = data?.users ?? [];
+    const match = users.find(user => user.email?.toLowerCase() === normalizedEmail);
+    if (match) return match;
+    if (users.length < perPage) return null;
+
+    page += 1;
+  }
+}
+
 // Creates or updates a Supabase auth account — avoids the slow listUsers() call
 // Tries createUser first; if the email is already registered, updates instead
 async function upsertSupabaseUser(supabase, email, password, metadata) {
@@ -108,22 +126,19 @@ async function upsertSupabaseUser(supabase, email, password, metadata) {
 
   if (!error) return data.user;
 
-  // User already exists — get their ID via generateLink (faster than listUsers)
-  const { data: linkData } = await supabase.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
-  });
+  // User already exists — find it directly and update it
+  const existingUser = await findAuthUserByEmail(supabase, email);
 
-  if (linkData?.user?.id) {
-    await supabase.auth.admin.updateUserById(linkData.user.id, {
+  if (existingUser?.id) {
+    await supabase.auth.admin.updateUserById(existingUser.id, {
       password,
       email_confirm: true,
       user_metadata: metadata,
     });
-    return linkData.user;
+    return existingUser;
   }
 
   return null;
 }
 
-module.exports = { generatePassword, sendCredentialsEmail, sendOwnerAccessLink, upsertSupabaseUser };
+module.exports = { findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, upsertSupabaseUser };

@@ -1,6 +1,10 @@
 const router = require('express').Router();
 const requireAuth = require('../middleware/auth');
 
+function getClientUrl() {
+  return (process.env.CLIENT_URL?.trim() || 'http://localhost:5173').replace(/\/+$/, '');
+}
+
 // ── STEP 2: Stage credentials (fast — no email) ──────────────────────────────
 async function stageCredentials() {
   const getSupabase = require('../supabase');
@@ -67,8 +71,7 @@ async function sendQueued() {
       const email      = owner.email.toLowerCase().trim();
       const password   = owner.pending_password;
       const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
-      const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
-      const redirectTo = `${clientUrl}/welcome`;
+      const redirectTo = `${getClientUrl()}/welcome`;
 
       await sendOwnerAccessLink(supabase, email, password, metadata, redirectTo);
 
