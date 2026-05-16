@@ -338,54 +338,24 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       });
     }
 
-    const { generatePassword } = require('./authHelpers');
+    const { generatePassword, sendOwnerAccessLink } = require('./authHelpers');
     const password   = generatePassword();
     const email      = owner.email.toLowerCase();
     const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
     const redirectTo = `${process.env.CLIENT_URL}/welcome`;
 
     // Store password temporarily so Welcome page can display it after confirmation
-    await supabase.from('owner_table')
+    const { error: stageErr } = await supabase.from('owner_table')
       .update({ pending_password: password })
       .eq('owner_id', owner.owner_id);
+    if (stageErr) throw new Error(`Failed to store pending password: ${stageErr.message}`);
 
-    const { createClient } = require('@supabase/supabase-js');
-    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    await sendOwnerAccessLink(supabase, email, password, metadata, redirectTo);
 
-    // Check if this email already has a Supabase auth account
-    const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
-    const existingUserId = linkData?.user?.id ?? null;
-
-    if (existingUserId) {
-      // EXISTING USER — reset their password then send a magic link email
-      // Magic link lands on /welcome where they see their new credentials
-      await supabase.auth.admin.updateUserById(existingUserId, {
-        password,
-        email_confirm: true,
-        user_metadata: metadata,
-      });
-
-      const { error: otpErr } = await anonClient.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
-      });
-      if (otpErr) throw new Error(`OTP send failed: ${otpErr.message}`);
-    } else {
-      // NEW USER — signUp sends the confirmation email automatically
-      const { data: signupData, error: signupErr } = await anonClient.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: redirectTo, data: metadata },
-      });
-      if (signupErr) throw new Error(`Signup failed: ${signupErr.message}`);
-      if (signupData?.user?.email_confirmed_at) {
-        throw new Error('Email confirmations are disabled in Supabase. Enable them under Authentication → Providers → Email.');
-      }
-    }
-
-    await supabase.from('owner_table')
+    const { error: sentErr } = await supabase.from('owner_table')
       .update({ credentials_sent: true })
       .eq('owner_id', owner.owner_id);
+    if (sentErr) throw new Error(`Failed to mark credentials as sent: ${sentErr.message}`);
 
     res.json({ success: true, message: `Credentials email sent to ${email}` });
   } catch (err) {
