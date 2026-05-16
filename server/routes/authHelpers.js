@@ -28,6 +28,7 @@ async function syncOwnerLocalCredentials(supabase, ownerId, email, password, dis
   const payload = {
     owner_id: ownerId,
     email: normalizedEmail,
+    username: normalizedEmail,
     password,
     password_hash: passwordHash,
     display_name: displayName ?? '',
