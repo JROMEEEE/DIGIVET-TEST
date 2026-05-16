@@ -349,36 +349,38 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .update({ pending_password: password })
       .eq('owner_id', owner.owner_id);
 
-    // Delete existing auth account so signUp triggers a fresh confirmation email
-    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
-    console.log(`[send-creds] generateLink for ${email}:`, linkData?.user?.id ?? 'no user found', linkErr?.message ?? '');
-    if (linkData?.user?.id) {
-      const { error: delErr } = await supabase.auth.admin.deleteUser(linkData.user.id);
-      console.log(`[send-creds] deleteUser:`, delErr?.message ?? 'ok');
-    }
-
-    // signUp via anon client — triggers Supabase's confirmation email
     const { createClient } = require('@supabase/supabase-js');
     const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { data: signupData, error: signupErr } = await anonClient.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: redirectTo, data: metadata },
-    });
 
-    console.log(`[send-creds] signUp result for ${email}:`,
-      signupErr ? `ERROR: ${signupErr.message}` :
-      signupData?.user?.email_confirmed_at ? 'auto-confirmed (email confirmations may be OFF in Supabase)' :
-      'confirmation email sent'
-    );
+    // Check if this email already has a Supabase auth account
+    const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+    const existingUserId = linkData?.user?.id ?? null;
 
-    if (signupErr) throw new Error(signupErr.message);
+    if (existingUserId) {
+      // EXISTING USER — reset their password then send a magic link email
+      // Magic link lands on /welcome where they see their new credentials
+      await supabase.auth.admin.updateUserById(existingUserId, {
+        password,
+        email_confirm: true,
+        user_metadata: metadata,
+      });
 
-    if (signupData?.user?.email_confirmed_at) {
-      throw new Error(
-        'Supabase did not send a confirmation email because "Enable Email Confirmations" is turned OFF. ' +
-        'Go to Supabase → Authentication → Providers → Email and enable it.'
-      );
+      const { error: otpErr } = await anonClient.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+      });
+      if (otpErr) throw new Error(`OTP send failed: ${otpErr.message}`);
+    } else {
+      // NEW USER — signUp sends the confirmation email automatically
+      const { data: signupData, error: signupErr } = await anonClient.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: redirectTo, data: metadata },
+      });
+      if (signupErr) throw new Error(`Signup failed: ${signupErr.message}`);
+      if (signupData?.user?.email_confirmed_at) {
+        throw new Error('Email confirmations are disabled in Supabase. Enable them under Authentication → Providers → Email.');
+      }
     }
 
     await supabase.from('owner_table')

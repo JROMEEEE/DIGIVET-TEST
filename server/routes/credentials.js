@@ -72,19 +72,32 @@ async function sendQueued() {
       const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
       const redirectTo = `${clientUrl}/welcome`;
 
-      // Delete existing auth account if present
-      const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
-      if (linkData?.user?.id) await supabase.auth.admin.deleteUser(linkData.user.id);
-
-      // signUp via anon client — only this triggers Supabase's confirmation email
       const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-      const { error: signupErr } = await anonClient.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: redirectTo, data: metadata },
-      });
 
-      if (signupErr) throw new Error(signupErr.message);
+      const { data: linkData } = await supabase.auth.admin.generateLink({ type: 'magiclink', email });
+      const existingUserId = linkData?.user?.id ?? null;
+
+      if (existingUserId) {
+        // Existing user — reset password + send magic link email
+        await supabase.auth.admin.updateUserById(existingUserId, {
+          password,
+          email_confirm: true,
+          user_metadata: metadata,
+        });
+        const { error: otpErr } = await anonClient.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+        });
+        if (otpErr) throw new Error(`OTP send failed: ${otpErr.message}`);
+      } else {
+        // New user — signUp triggers confirmation email
+        const { error: signupErr } = await anonClient.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: redirectTo, data: metadata },
+        });
+        if (signupErr) throw new Error(`Signup failed: ${signupErr.message}`);
+      }
 
       await supabase
         .from('owner_table')
