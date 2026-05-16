@@ -348,7 +348,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       });
     }
 
-    const { generatePassword, sendOwnerAccessLink } = require('./authHelpers');
+    const { generatePassword, sendOwnerAccessLink, syncOwnerLocalCredentials } = require('./authHelpers');
     const password   = generatePassword();
     const email      = owner.email.toLowerCase();
     const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
@@ -361,6 +361,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
     if (stageErr) throw new Error(`Failed to store pending password: ${stageErr.message}`);
 
     await sendOwnerAccessLink(supabase, email, password, metadata, redirectTo);
+    await syncOwnerLocalCredentials(supabase, owner.owner_id, email, password, owner.owner_name);
 
     const { error: sentErr } = await supabase.from('owner_table')
       .update({ credentials_sent: true })

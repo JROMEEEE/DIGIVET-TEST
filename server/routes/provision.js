@@ -4,7 +4,7 @@ const requireAuth = require('../middleware/auth');
 async function runAutoProvision() {
   const getSupabase = require('../supabase');
   const supabase    = getSupabase();
-  const { generatePassword, sendCredentialsEmail, upsertSupabaseUser } = require('./authHelpers');
+  const { generatePassword, sendCredentialsEmail, syncOwnerLocalCredentials, upsertSupabaseUser } = require('./authHelpers');
 
   // Owners with emails in Supabase
   const { data: owners, error } = await supabase
@@ -38,6 +38,7 @@ async function runAutoProvision() {
       const metadata = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
 
       await upsertSupabaseUser(supabase, email, password, metadata);
+      await syncOwnerLocalCredentials(supabase, owner.owner_id, email, password, owner.owner_name);
       await sendCredentialsEmail(email, owner.owner_name, password);
       console.log(`[provision] ✓ ${email}`);
     })

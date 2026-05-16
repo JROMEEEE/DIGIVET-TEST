@@ -3,6 +3,52 @@ function generatePassword() {
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+async function syncOwnerLocalCredentials(supabase, ownerId, email, password, displayName) {
+  if (!ownerId || !email || !password) return;
+
+  const bcrypt = require('bcryptjs');
+  const normalizedEmail = email.toLowerCase().trim();
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const payload = {
+    owner_id: ownerId,
+    email: normalizedEmail,
+    password,
+    password_hash: passwordHash,
+    display_name: displayName ?? '',
+  };
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('user_table')
+    .select('user_id')
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+
+  if (fetchErr) {
+    throw new Error(`Failed to read local owner credentials: ${fetchErr.message}`);
+  }
+
+  if (existing?.user_id) {
+    const { error: updateErr } = await supabase
+      .from('user_table')
+      .update(payload)
+      .eq('user_id', existing.user_id);
+
+    if (updateErr) {
+      throw new Error(`Failed to update local owner credentials: ${updateErr.message}`);
+    }
+    return;
+  }
+
+  const { error: insertErr } = await supabase
+    .from('user_table')
+    .insert(payload);
+
+  if (insertErr) {
+    throw new Error(`Failed to create local owner credentials: ${insertErr.message}`);
+  }
+}
+
 // Singleton pooled transporter — connection reused across all emails, no reconnect overhead
 let _transporter = null;
 function getTransporter() {
@@ -141,4 +187,4 @@ async function upsertSupabaseUser(supabase, email, password, metadata) {
   return null;
 }
 
-module.exports = { findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, upsertSupabaseUser };
+module.exports = { findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };

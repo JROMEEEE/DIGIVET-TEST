@@ -819,10 +819,12 @@ function OwnersTab({ refs }) {
   const { rows, loading } = useVetTable('owner_table');
   const [search, setSearch]         = useState('');
   const [sending, setSending]       = useState({});
+  const [sendErrors, setSendErrors] = useState({});
   const [provisioning, setProvision]    = useState(false);
   const [provisionMsg, setProvisionMsg] = useState('');
   const [showConfirm, setShowConfirm]   = useState(false);
   const [resendTarget, setResendTarget] = useState(null); // owner to resend to
+  const [failedTarget, setFailedTarget] = useState(null);
   const { editing, setEditing, deleting, setDeleting, saveEdit, confirmDelete } = useEditDelete('owner_table', 'owner_id');
   const [credStatus, setCredStatus] = useState(null);
 
@@ -860,6 +862,11 @@ useEffect(() => {
 
   async function sendCredentials(owner, force = false) {
     setSending(s => ({ ...s, [owner.owner_id]: 'sending' }));
+    setSendErrors(s => {
+      const next = { ...s };
+      delete next[owner.owner_id];
+      return next;
+    });
     try {
       const res  = await authFetch('/api/auth/send-owner-credentials', {
         method: 'POST',
@@ -873,11 +880,19 @@ useEffect(() => {
           setResendTarget(owner);
           return;
         }
+        const message = data.error || `Request failed with status ${res.status}`;
+        setSendErrors(s => ({ ...s, [owner.owner_id]: message }));
         setSending(s => ({ ...s, [owner.owner_id]: 'error' }));
       } else {
+        setSendErrors(s => {
+          const next = { ...s };
+          delete next[owner.owner_id];
+          return next;
+        });
         setSending(s => ({ ...s, [owner.owner_id]: 'sent' }));
       }
-    } catch {
+    } catch (err) {
+      setSendErrors(s => ({ ...s, [owner.owner_id]: err.message || 'Network error while sending credentials' }));
       setSending(s => ({ ...s, [owner.owner_id]: 'error' }));
     }
   }
@@ -981,6 +996,7 @@ useEffect(() => {
               <tbody>
                 {filtered.map((r, i) => {
                   const state = sending[r.owner_id];
+                  const errorMessage = sendErrors[r.owner_id];
                   const credSent = r.credentials_sent || state === 'sent';
                   return (
                     <tr key={r.owner_id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid #f5f6fa` : 'none' }}
@@ -1001,7 +1017,7 @@ useEffect(() => {
                       <td style={{ padding: '10px 14px', color: MUTED }}>{refs.barangayMap[r.barangay_id] ?? `Brgy #${r.barangay_id}`}</td>
                       <td style={{ padding: '10px 14px' }}>
                         {state === 'error'
-                          ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 5, padding: '2px 8px' }}>Failed</span>
+                          ? <button onClick={() => setFailedTarget({ owner: r, error: errorMessage || 'Unknown send error' })} style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>Failed</button>
                           : credSent
                           ? <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '2px 8px' }}>Sent</span>
                           : <span style={{ fontSize: '0.75rem', color: '#d1d5db' }}>—</span>
@@ -1071,6 +1087,40 @@ useEffect(() => {
           onConfirm={async () => { setResendTarget(null); await sendCredentials(resendTarget, true); }}
           onCancel={() => setResendTarget(null)}
         />
+      )}
+      {failedTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}
+          onClick={() => setFailedTarget(null)}>
+          <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ background: '#dc2626', padding: '1.5rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '2.2rem', marginBottom: '0.4rem' }}>!</div>
+              <h2 style={{ color: '#fff', fontWeight: 800, margin: 0, fontSize: '1.05rem' }}>Credential Send Failed</h2>
+            </div>
+            <div style={{ padding: '1.5rem' }}>
+              <p style={{ color: '#111', fontSize: '0.92rem', fontWeight: 700, margin: '0 0 0.4rem' }}>{failedTarget.owner.owner_name}</p>
+              <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: '0 0 1rem' }}>{failedTarget.owner.email || 'No email on record'}</p>
+              <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ color: '#991b1b', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.5rem' }}>Error</p>
+                <p style={{ color: '#7f1d1d', fontSize: '0.88rem', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{failedTarget.error}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={() => setFailedTarget(null)}
+                  style={{ flex: 1, background: '#f3f4f6', border: 'none', borderRadius: 10, padding: '0.8rem', fontSize: '0.9rem', cursor: 'pointer', color: '#555', fontWeight: 600 }}>
+                  Close
+                </button>
+                <button onClick={async () => {
+                  const owner = failedTarget.owner;
+                  setFailedTarget(null);
+                  await sendCredentials(owner, true);
+                }}
+                  style={{ flex: 2, background: MAROON, color: '#fff', border: 'none', borderRadius: 10, padding: '0.8rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Retry Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

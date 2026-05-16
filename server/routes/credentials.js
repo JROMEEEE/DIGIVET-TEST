@@ -55,7 +55,7 @@ async function stageCredentials() {
 // ── STEP 3: Send queued credentials (slow — email) ───────────────────────────
 async function sendQueued() {
   const getSupabase = require('../supabase');
-  const { sendOwnerAccessLink } = require('./authHelpers');
+  const { sendOwnerAccessLink, syncOwnerLocalCredentials } = require('./authHelpers');
   const supabase = getSupabase();
 
   const { data: owners } = await supabase
@@ -74,6 +74,7 @@ async function sendQueued() {
       const redirectTo = `${getClientUrl()}/welcome`;
 
       await sendOwnerAccessLink(supabase, email, password, metadata, redirectTo);
+      await syncOwnerLocalCredentials(supabase, owner.owner_id, email, password, owner.owner_name);
 
       await supabase
         .from('owner_table')
