@@ -348,7 +348,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       });
     }
 
-    const { generatePassword, sendOwnerAccessLink, syncOwnerLocalCredentials } = require('./authHelpers');
+    const { deliverOwnerCredentials, generatePassword, syncOwnerLocalCredentials } = require('./authHelpers');
     const password   = generatePassword();
     const email      = owner.email.toLowerCase();
     const metadata   = { full_name: owner.owner_name, role: 'pet_owner', owner_id: owner.owner_id };
@@ -360,7 +360,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .eq('owner_id', owner.owner_id);
     if (stageErr) throw new Error(`Failed to store pending password: ${stageErr.message}`);
 
-    await sendOwnerAccessLink(supabase, email, password, metadata, redirectTo);
+    const delivery = await deliverOwnerCredentials(supabase, email, owner.owner_name, password, metadata, redirectTo);
     await syncOwnerLocalCredentials(supabase, owner.owner_id, email, password, owner.owner_name);
 
     const { error: sentErr } = await supabase.from('owner_table')
@@ -368,7 +368,7 @@ router.post('/send-owner-credentials', requireAuth, async (req, res) => {
       .eq('owner_id', owner.owner_id);
     if (sentErr) throw new Error(`Failed to mark credentials as sent: ${sentErr.message}`);
 
-    res.json({ success: true, message: `Credentials email sent to ${email}` });
+    res.json({ success: true, channel: delivery.channel, message: `Credentials email sent to ${email}` });
   } catch (err) {
     console.error('[send-creds] error:', {
       owner_id,

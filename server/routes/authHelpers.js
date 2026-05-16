@@ -114,6 +114,36 @@ async function sendCredentialsEmail(email, name, password) {
   });
 }
 
+async function deliverOwnerCredentials(supabase, email, name, password, metadata, redirectTo) {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const user = await upsertSupabaseUser(supabase, normalizedEmail, password, metadata);
+  if (!user?.id) {
+    throw new Error(`Failed to create or update Supabase auth user for ${normalizedEmail}`);
+  }
+
+  if (process.env.SUPABASE_ANON_KEY) {
+    const { createClient } = require('@supabase/supabase-js');
+    const anonClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: otpErr } = await anonClient.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: redirectTo,
+        shouldCreateUser: false,
+      },
+    });
+
+    if (otpErr) {
+      throw new Error(`Magic link send failed: ${otpErr.message}`);
+    }
+
+    return { channel: 'supabase-otp', user };
+  }
+
+  await sendCredentialsEmail(normalizedEmail, name, password);
+  return { channel: 'smtp-credentials', user };
+}
+
 async function sendOwnerAccessLink(supabase, email, password, metadata, redirectTo) {
   const normalizedEmail = email.toLowerCase().trim();
   if (!process.env.SUPABASE_ANON_KEY) {
@@ -187,4 +217,4 @@ async function upsertSupabaseUser(supabase, email, password, metadata) {
   return null;
 }
 
-module.exports = { findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };
+module.exports = { deliverOwnerCredentials, findAuthUserByEmail, generatePassword, sendCredentialsEmail, sendOwnerAccessLink, syncOwnerLocalCredentials, upsertSupabaseUser };
